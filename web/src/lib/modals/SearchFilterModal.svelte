@@ -7,7 +7,7 @@
   export type SearchFilter = {
     query: string;
     ocr?: string;
-    queryType: 'smart' | 'metadata' | 'description' | 'ocr';
+    queryType: 'smart' | 'metadata' | 'description' | 'fullPath' | 'ocr';
     personIds: SvelteSet<string>;
     tagIds: SvelteSet<string> | null;
     location: SearchLocationFilter;
@@ -72,6 +72,9 @@
   }
   if ('originalFileName' in searchQuery && searchQuery.originalFileName) {
     query = searchQuery.originalFileName;
+  }
+  if ('originalPath' in searchQuery && searchQuery.originalPath) {
+    query = searchQuery.originalPath;
   }
 
   let filter: SearchFilter = $state({
@@ -148,6 +151,7 @@
       ocr: filter.queryType === 'ocr' ? query : undefined,
       originalFileName: filter.queryType === 'metadata' ? query : undefined,
       description: filter.queryType === 'description' ? query : undefined,
+      originalPath: filter.queryType === 'fullPath' ? query : undefined,
       country: filter.location.country,
       state: filter.location.state,
       city: filter.location.city,

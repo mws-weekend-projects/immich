@@ -88,6 +88,9 @@
       case 'description': {
         return { description: term };
       }
+      case 'fullPath': {
+        return { originalPath: term };
+      }
       case 'ocr': {
         return { ocr: term };
       }
@@ -197,6 +200,7 @@
       case 'smart':
       case 'metadata':
       case 'description':
+      case 'fullPath':
       case 'ocr': {
         currentSearchType = searchType;
         return searchType;
@@ -219,6 +223,9 @@
       case 'description': {
         return $t('description');
       }
+      case 'fullPath': {
+        return $t('full_path_or_folder');
+      }
       case 'ocr': {
         return $t('ocr');
       }
@@ -236,6 +243,7 @@
     { value: 'smart', label: () => $t('context') },
     { value: 'metadata', label: () => $t('filename') },
     { value: 'description', label: () => $t('description') },
+    { value: 'fullPath', label: () => $t('full_path_or_folder') },
     { value: 'ocr', label: () => $t('ocr') },
   ] as const;
 </script>
