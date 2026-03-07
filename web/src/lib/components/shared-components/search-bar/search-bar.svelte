@@ -89,7 +89,8 @@
         return { description: term };
       }
       case 'fullPath': {
-        return { originalPath: term };
+        const normalizedTerm = term.trim();
+        return normalizedTerm ? { originalPath: normalizedTerm } : {};
       }
       case 'ocr': {
         return { ocr: term };
