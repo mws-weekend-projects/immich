@@ -1,8 +1,9 @@
 <script lang="ts">
   import StatsCard from '$lib/components/server-statistics/ServerStatisticsCard.svelte';
+  import { asQueueItem } from '$lib/services/queue.service';
   import { locale } from '$lib/stores/preferences.store';
   import { getBytesWithUnit } from '$lib/utils/byte-units';
-  import type { ServerStatsResponseDto } from '@immich/sdk';
+  import { QueueName, type QueueResponseDto, type ServerStatsResponseDto } from '@immich/sdk';
   import {
     Code,
     FormatBytes,
@@ -20,9 +21,11 @@
 
   type Props = {
     stats: ServerStatsResponseDto;
+    queues: QueueResponseDto[];
+    queueEtaSeconds: Record<string, number | null>;
   };
 
-  const { stats }: Props = $props();
+  const { stats, queues, queueEtaSeconds }: Props = $props();
 
   const zeros = (value: number, maxLength = 13) => {
     const valueLength = value.toString().length;
@@ -31,15 +34,57 @@
     return '0'.repeat(zeroLength);
   };
 
+  const formatEta = (seconds: number | null | undefined) => {
+    if (seconds === null || seconds === undefined) {
+      return '—';
+    }
+
+    if (seconds < 60) {
+      return '<1m';
+    }
+
+    const minutes = Math.ceil(seconds / 60);
+    if (minutes < 60) {
+      return `${minutes.toLocaleString($locale)}m`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+
+    if (remainingMinutes === 0) {
+      return `${hours.toLocaleString($locale)}h`;
+    }
+
+    return `${hours.toLocaleString($locale)}h ${remainingMinutes.toLocaleString($locale)}m`;
+  };
+
+  const queueOrder = [
+    QueueName.MetadataExtraction,
+    QueueName.ThumbnailGeneration,
+    QueueName.Library,
+    QueueName.VideoConversion,
+    QueueName.FaceDetection,
+    QueueName.FacialRecognition,
+    QueueName.SmartSearch,
+    QueueName.Ocr,
+  ];
+
   const TiB = 1024 ** 4;
   let [statsUsage, statsUsageUnit] = $derived(getBytesWithUnit(stats.usage, stats.usage > TiB ? 2 : 0));
+
+  let workerQueues = $derived(
+    queueOrder.flatMap((queueName) => {
+      const queue = queues.find((item) => item.name === queueName);
+      return queue ? [queue] : [];
+    }),
+  );
 </script>
 
-<div class="flex flex-col gap-5 my-4">
+<div class="my-4 flex flex-col gap-5">
   <div>
     <Text class="mb-2" fontWeight="medium">{$t('total_usage')}</Text>
 
-    <div class="hidden justify-between lg:flex gap-4">
+    <div class="hidden justify-between gap-4 lg:flex">
       <StatsCard icon={mdiCameraIris} title={$t('photos')} value={stats.photos} />
       <StatsCard icon={mdiPlayCircle} title={$t('videos')} value={stats.videos} />
       <StatsCard icon={mdiChartPie} title={$t('storage')} value={statsUsage} unit={statsUsageUnit} />
@@ -77,7 +122,7 @@
             <span class="text-light-300">{zeros(statsUsage)}</span><span class="text-primary">{statsUsage}</span>
 
             <div class="absolute -end-1.5 -bottom-4">
-              <Code color="muted" class="text-xs font-light font-mono">{statsUsageUnit}</Code>
+              <Code color="muted" class="font-mono text-xs font-light">{statsUsageUnit}</Code>
             </div>
           </div>
         </div>
@@ -120,6 +165,32 @@
                 {/if}
               </span>
             </TableCell>
+          </TableRow>
+        {/each}
+      </TableBody>
+    </Table>
+  </div>
+
+  <div>
+    <Text class="mb-2 mt-4" fontWeight="medium">{$t('jobs')}</Text>
+    <Table striped size="small" class="table-fixed">
+      <TableHeader>
+        <TableHeading class="w-1/2 text-left">{$t('jobs')}</TableHeading>
+        <TableHeading class="w-1/10">{$t('waiting')}</TableHeading>
+        <TableHeading class="w-1/10">{$t('active')}</TableHeading>
+        <TableHeading class="w-1/10">{$t('failed')}</TableHeading>
+        <TableHeading class="w-1/10">{$t('status')}</TableHeading>
+        <TableHeading class="w-1/10">ETA</TableHeading>
+      </TableHeader>
+      <TableBody>
+        {#each workerQueues as queue (queue.name)}
+          <TableRow>
+            <TableCell class="w-1/2 text-left">{asQueueItem($t, queue).title}</TableCell>
+            <TableCell class="w-1/10">{queue.statistics.waiting.toLocaleString($locale)}</TableCell>
+            <TableCell class="w-1/10">{queue.statistics.active.toLocaleString($locale)}</TableCell>
+            <TableCell class="w-1/10">{queue.statistics.failed.toLocaleString($locale)}</TableCell>
+            <TableCell class="w-1/10">{queue.isPaused ? $t('paused') : $t('active')}</TableCell>
+            <TableCell class="w-1/10">{formatEta(queueEtaSeconds[queue.name])}</TableCell>
           </TableRow>
         {/each}
       </TableBody>
