@@ -1,9 +1,17 @@
 <script lang="ts">
   import StatsCard from '$lib/components/server-statistics/ServerStatisticsCard.svelte';
-  import { asQueueItem } from '$lib/services/queue.service';
+  import { asQueueItem, handlePauseQueue, handleResumeQueue } from '$lib/services/queue.service';
   import { locale } from '$lib/stores/preferences.store';
+  import { handleError } from '$lib/utils/handle-error';
   import { getBytesWithUnit } from '$lib/utils/byte-units';
-  import { QueueName, type QueueResponseDto, type ServerStatsResponseDto } from '@immich/sdk';
+  import {
+    QueueCommand,
+    QueueName,
+    runQueueCommandLegacy,
+    updateQueue,
+    type QueueResponseDto,
+    type ServerStatsResponseDto,
+  } from '@immich/sdk';
   import {
     Code,
     FormatBytes,
@@ -23,9 +31,14 @@
     stats: ServerStatsResponseDto;
     queues: QueueResponseDto[];
     queueEtaSeconds: Record<string, number | null>;
+    onQueueActionCompleted: () => Promise<void> | void;
   };
 
-  const { stats, queues, queueEtaSeconds }: Props = $props();
+  const { stats, queues, queueEtaSeconds, onQueueActionCompleted }: Props = $props();
+
+  type QueueAction = 'pause' | 'resume' | 'start';
+
+  let queueActionInProgress = $state<Record<string, QueueAction | undefined>>({});
 
   const zeros = (value: number, maxLength = 13) => {
     const valueLength = value.toString().length;
@@ -56,6 +69,41 @@
     }
 
     return `${hours.toLocaleString($locale)}h ${remainingMinutes.toLocaleString($locale)}m`;
+  };
+
+  const runQueueAction = async (queue: QueueResponseDto, action: QueueAction) => {
+    if (queueActionInProgress[queue.name]) {
+      return;
+    }
+
+    queueActionInProgress = { ...queueActionInProgress, [queue.name]: action };
+
+    try {
+      if (action === 'pause') {
+        await handlePauseQueue(queue);
+      }
+
+      if (action === 'resume') {
+        await handleResumeQueue(queue);
+      }
+
+      if (action === 'start') {
+        if (queue.isPaused) {
+          await updateQueue({ name: queue.name, queueUpdateDto: { isPaused: false } });
+        }
+
+        await runQueueCommandLegacy({
+          name: queue.name,
+          queueCommandDto: { command: QueueCommand.Start, force: false },
+        });
+      }
+
+      await onQueueActionCompleted();
+    } catch (error) {
+      handleError(error, $t('errors.something_went_wrong'));
+    } finally {
+      queueActionInProgress = { ...queueActionInProgress, [queue.name]: undefined };
+    }
   };
 
   const queueOrder = [
@@ -175,22 +223,56 @@
     <Text class="mb-2 mt-4" fontWeight="medium">{$t('jobs')}</Text>
     <Table striped size="small" class="table-fixed">
       <TableHeader>
-        <TableHeading class="w-1/2 text-left">{$t('jobs')}</TableHeading>
-        <TableHeading class="w-1/10">{$t('waiting')}</TableHeading>
-        <TableHeading class="w-1/10">{$t('active')}</TableHeading>
-        <TableHeading class="w-1/10">{$t('failed')}</TableHeading>
-        <TableHeading class="w-1/10">{$t('status')}</TableHeading>
-        <TableHeading class="w-1/10">ETA</TableHeading>
+        <TableHeading class="w-[36%] text-left">{$t('jobs')}</TableHeading>
+        <TableHeading class="w-[9%]">{$t('waiting')}</TableHeading>
+        <TableHeading class="w-[9%]">{$t('active')}</TableHeading>
+        <TableHeading class="w-[9%]">{$t('failed')}</TableHeading>
+        <TableHeading class="w-[10%]">{$t('status')}</TableHeading>
+        <TableHeading class="w-[10%]">ETA</TableHeading>
+        <TableHeading class="w-[17%] text-left">{$t('actions')}</TableHeading>
       </TableHeader>
       <TableBody>
         {#each workerQueues as queue (queue.name)}
           <TableRow>
-            <TableCell class="w-1/2 text-left">{asQueueItem($t, queue).title}</TableCell>
-            <TableCell class="w-1/10">{queue.statistics.waiting.toLocaleString($locale)}</TableCell>
-            <TableCell class="w-1/10">{queue.statistics.active.toLocaleString($locale)}</TableCell>
-            <TableCell class="w-1/10">{queue.statistics.failed.toLocaleString($locale)}</TableCell>
-            <TableCell class="w-1/10">{queue.isPaused ? $t('paused') : $t('active')}</TableCell>
-            <TableCell class="w-1/10">{formatEta(queueEtaSeconds[queue.name])}</TableCell>
+            <TableCell class="w-[36%] text-left">{asQueueItem($t, queue).title}</TableCell>
+            <TableCell class="w-[9%]">{queue.statistics.waiting.toLocaleString($locale)}</TableCell>
+            <TableCell class="w-[9%]">{queue.statistics.active.toLocaleString($locale)}</TableCell>
+            <TableCell class="w-[9%]">{queue.statistics.failed.toLocaleString($locale)}</TableCell>
+            <TableCell class="w-[10%]">{queue.isPaused ? $t('paused') : $t('active')}</TableCell>
+            <TableCell class="w-[10%]">{formatEta(queueEtaSeconds[queue.name])}</TableCell>
+            <TableCell class="w-[17%] text-left">
+              {#if queueActionInProgress[queue.name]}
+                <span class="text-xs text-light-500">{$t('loading')}</span>
+              {:else}
+                <div class="flex items-center gap-2 text-xs">
+                  {#if queue.isPaused}
+                    <button
+                      type="button"
+                      class="text-primary hover:underline"
+                      onclick={() => void runQueueAction(queue, 'resume')}
+                    >
+                      {$t('resume')}
+                    </button>
+                  {:else}
+                    <button
+                      type="button"
+                      class="text-primary hover:underline"
+                      onclick={() => void runQueueAction(queue, 'pause')}
+                    >
+                      {$t('pause')}
+                    </button>
+                  {/if}
+                  <span class="text-light-500">|</span>
+                  <button
+                    type="button"
+                    class="text-primary hover:underline"
+                    onclick={() => void runQueueAction(queue, 'start')}
+                  >
+                    {$t('start')}
+                  </button>
+                </div>
+              {/if}
+            </TableCell>
           </TableRow>
         {/each}
       </TableBody>
