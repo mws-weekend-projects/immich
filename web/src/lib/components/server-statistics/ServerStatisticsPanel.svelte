@@ -72,6 +72,9 @@
     return `${hours.toLocaleString($locale)}h ${remainingMinutes.toLocaleString($locale)}m`;
   };
 
+  const getDisplayedWaiting = (queue: QueueResponseDto) =>
+    queue.isPaused ? queue.statistics.waiting + queue.statistics.paused : queue.statistics.waiting;
+
   const runQueueAction = async (queue: QueueResponseDto, action: QueueAction) => {
     if (queueActionInProgress[queue.name]) {
       return;
@@ -242,7 +245,7 @@
         {#each workerQueues as queue (queue.name)}
           <TableRow>
             <TableCell class="w-[36%] text-left">{asQueueItem($t, queue).title}</TableCell>
-            <TableCell class="w-[9%]">{queue.statistics.waiting.toLocaleString($locale)}</TableCell>
+            <TableCell class="w-[9%]">{getDisplayedWaiting(queue).toLocaleString($locale)}</TableCell>
             <TableCell class="w-[9%]">{queue.statistics.active.toLocaleString($locale)}</TableCell>
             <TableCell class="w-[9%]">{queue.statistics.failed.toLocaleString($locale)}</TableCell>
             <TableCell class="w-[10%]">{queue.isPaused ? $t('paused') : $t('active')}</TableCell>
