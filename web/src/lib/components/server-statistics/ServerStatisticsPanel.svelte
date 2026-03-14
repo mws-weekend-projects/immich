@@ -23,6 +23,7 @@
     TableHeading,
     TableRow,
     Text,
+    toastManager,
   } from '@immich/ui';
   import { mdiCameraIris, mdiChartPie, mdiPlayCircle } from '@mdi/js';
   import { t } from 'svelte-i18n';
@@ -88,6 +89,12 @@
       }
 
       if (action === 'start') {
+        if (queue.statistics.active > 0) {
+          toastManager.info($t('active'));
+          await onQueueActionCompleted();
+          return;
+        }
+
         if (queue.isPaused) {
           await updateQueue({ name: queue.name, queueUpdateDto: { isPaused: false } });
         }
