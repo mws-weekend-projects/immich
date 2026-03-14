@@ -96,6 +96,6 @@
 
 <AdminPageLayout breadcrumbs={[{ title: data.meta.title }]}>
   <Container size="large" center>
-    <ServerStatisticsPanel {stats} {queues} {queueEtaSeconds} />
+    <ServerStatisticsPanel {stats} {queues} {queueEtaSeconds} onQueueActionCompleted={updateStatistics} />
   </Container>
 </AdminPageLayout>
