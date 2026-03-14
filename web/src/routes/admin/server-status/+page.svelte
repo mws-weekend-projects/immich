@@ -17,6 +17,9 @@
 
   const { data }: Props = $props();
 
+  const getQueueBacklog = (queue: QueueResponseDto) =>
+    queue.statistics.waiting + queue.statistics.active + queue.statistics.paused;
+
   const initialTimestampMs = Date.now();
   let stats = $state(data.stats);
   let queues = $state<QueueResponseDto[]>(data.queues);
@@ -25,7 +28,7 @@
       data.queues.map((queue) => [
         queue.name,
         {
-          backlog: queue.statistics.waiting + queue.statistics.active,
+          backlog: getQueueBacklog(queue),
           timestampMs: initialTimestampMs,
         },
       ]),
@@ -38,7 +41,7 @@
     previous: QueueBacklogSnapshot | undefined,
     timestampMs: number,
   ): number | null => {
-    const backlog = queue.statistics.waiting + queue.statistics.active;
+    const backlog = getQueueBacklog(queue);
 
     if (backlog === 0) {
       return 0;
@@ -74,9 +77,17 @@
 
     for (const queue of nextQueues) {
       const previous = queueBacklogSnapshots[queue.name];
+
+      if (queue.isPaused) {
+        const backlog = getQueueBacklog(queue);
+        nextQueueEtaSeconds[queue.name] = queueEtaSeconds[queue.name] ?? (backlog === 0 ? 0 : null);
+        nextQueueBacklogSnapshots[queue.name] = { backlog, timestampMs };
+        continue;
+      }
+
       nextQueueEtaSeconds[queue.name] = calculateEtaSeconds(queue, previous, timestampMs);
       nextQueueBacklogSnapshots[queue.name] = {
-        backlog: queue.statistics.waiting + queue.statistics.active,
+        backlog: getQueueBacklog(queue),
         timestampMs,
       };
     }
