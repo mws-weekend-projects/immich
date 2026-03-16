@@ -57,13 +57,25 @@ export class AssetJobRepository {
       .executeTakeFirst();
   }
 
-  @GenerateSql({ params: [{ force: false, fullsizeEnabled: true }], stream: true })
-  streamForThumbnailJob(options: { force: boolean | undefined; fullsizeEnabled: boolean }) {
+  @GenerateSql({ params: [{ force: false, fullsizeEnabled: true, stage: 'image' }], stream: true })
+  streamForThumbnailJob(options: {
+    force: boolean | undefined;
+    fullsizeEnabled: boolean;
+    stage?: 'image' | 'video';
+  }) {
     return this.db
       .selectFrom('asset')
       .select(['asset.id', 'asset.isEdited'])
       .where('asset.deletedAt', 'is', null)
       .where('asset.visibility', '!=', sql.lit(AssetVisibility.Hidden))
+      .$if(
+        options.stage === 'image',
+        (qb) => qb.where(sql`asset.type != ${AssetType.Video} and lower(asset."originalFileName") not like '%.gif'`),
+      )
+      .$if(
+        options.stage === 'video',
+        (qb) => qb.where(sql`asset.type = ${AssetType.Video} or lower(asset."originalFileName") like '%.gif'`),
+      )
       .$if(!options.force, (qb) =>
         qb
           // If there aren't any entries, metadata extraction hasn't run yet which is required for thumbnails

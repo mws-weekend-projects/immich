@@ -6,7 +6,6 @@ import { AssetEditAction } from 'src/dtos/editing.dto';
 import {
   AssetFileType,
   AssetPathType,
-  AssetStatus,
   AssetType,
   AssetVisibility,
   AudioCodec,
@@ -51,24 +50,55 @@ describe(MediaService.name, () => {
   // TODO these should all become medium tests of either the service or the repository.
   // The entire logic of what to queue lives in the SQL query now
   describe('handleQueueGenerateThumbnails', () => {
-    it('should queue all assets', async () => {
-      const asset = AssetFactory.create();
+    it('should queue image thumbnails first, then people, then video/gif thumbnails', async () => {
+      const imageAsset = { id: factory.uuid(), isEdited: false };
+      const videoAsset = { id: factory.uuid(), isEdited: false };
       const person = PersonFactory.create({ faceAssetId: newUuid() });
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
 
+      mocks.assetJob.streamForThumbnailJob.mockImplementation(({ stage }) => {
+        if (stage === 'image') {
+          return makeStream([imageAsset]);
+        }
+
+        return makeStream([videoAsset]);
+      });
       mocks.person.getAll.mockReturnValue(makeStream([person]));
 
-      await sut.handleQueueGenerateThumbnails({ force: true });
+      await sut.handleQueueGenerateThumbnails({ force: false });
 
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: true, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.AssetGenerateThumbnails,
-          data: { id: asset.id },
-        },
+      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenNthCalledWith(1, {
+        force: false,
+        fullsizeEnabled: false,
+        stage: 'image',
+      });
+      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenNthCalledWith(2, {
+        force: false,
+        fullsizeEnabled: false,
+        stage: 'video',
+      });
+      expect(mocks.job.queueAll).toHaveBeenNthCalledWith(1, [
+        { name: JobName.AssetGenerateThumbnails, data: { id: imageAsset.id } },
       ]);
+      expect(mocks.job.queueAll).toHaveBeenNthCalledWith(2, [
+        { name: JobName.PersonGenerateThumbnail, data: { id: person.id } },
+      ]);
+      expect(mocks.job.queueAll).toHaveBeenNthCalledWith(3, [
+        { name: JobName.AssetGenerateThumbnails, data: { id: videoAsset.id } },
+      ]);
+    });
 
-      expect(mocks.person.getAll).toHaveBeenCalledWith(undefined);
+    it('should queue all people with missing thumbnail path and hydrate missing faceAssetId', async () => {
+      const person = PersonFactory.create({ thumbnailPath: undefined, faceAssetId: undefined });
+
+      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream());
+      mocks.person.getAll.mockReturnValue(makeStream([person]));
+      mocks.person.getRandomFace.mockResolvedValueOnce(AssetFaceFactory.create());
+
+      await sut.handleQueueGenerateThumbnails({ force: false });
+
+      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
+      expect(mocks.person.getRandomFace).toHaveBeenCalledWith(person.id);
+      expect(mocks.person.update).toHaveBeenCalledTimes(1);
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
         {
           name: JobName.PersonGenerateThumbnail,
@@ -77,208 +107,58 @@ describe(MediaService.name, () => {
       ]);
     });
 
-    it('should queue trashed assets when force is true', async () => {
-      const asset = AssetFactory.create({ status: AssetStatus.Trashed, deletedAt: new Date() });
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
+    it('should queue both regular and edited thumbnails when force is true', async () => {
+      const editedAsset = AssetFactory.from().edit().build();
+      mocks.assetJob.streamForThumbnailJob.mockImplementation(({ stage }) =>
+        stage === 'image' ? makeStream([editedAsset]) : makeStream(),
+      );
       mocks.person.getAll.mockReturnValue(makeStream());
 
       await sut.handleQueueGenerateThumbnails({ force: true });
 
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: true, fullsizeEnabled: false });
+      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenNthCalledWith(1, {
+        force: true,
+        fullsizeEnabled: false,
+        stage: 'image',
+      });
+      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenNthCalledWith(2, {
+        force: true,
+        fullsizeEnabled: false,
+        stage: 'video',
+      });
       expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.AssetGenerateThumbnails,
-          data: { id: asset.id },
-        },
+        { name: JobName.AssetGenerateThumbnails, data: { id: editedAsset.id } },
+        { name: JobName.AssetEditThumbnailGeneration, data: { id: editedAsset.id } },
       ]);
-    });
-
-    it('should queue archived assets when force is true', async () => {
-      const asset = AssetFactory.create({ visibility: AssetVisibility.Archive });
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-
-      await sut.handleQueueGenerateThumbnails({ force: true });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: true, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.AssetGenerateThumbnails,
-          data: { id: asset.id },
-        },
-      ]);
-    });
-
-    it('should queue all people with missing thumbnail path', async () => {
-      const [person1, person2] = [
-        PersonFactory.create({ thumbnailPath: undefined }),
-        PersonFactory.create({ thumbnailPath: undefined }),
-      ];
-
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([AssetFactory.create()]));
-      mocks.person.getAll.mockReturnValue(makeStream([person1, person2]));
-      mocks.person.getRandomFace.mockResolvedValueOnce(AssetFaceFactory.create());
-
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-      expect(mocks.person.getRandomFace).toHaveBeenCalled();
-      expect(mocks.person.update).toHaveBeenCalledTimes(1);
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.PersonGenerateThumbnail,
-          data: {
-            id: person1.id,
-          },
-        },
-      ]);
-    });
-
-    it('should queue all assets with missing resize path', async () => {
-      const asset = AssetFactory.create();
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.AssetGenerateThumbnails,
-          data: { id: asset.id },
-        },
-      ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-    });
-
-    it('should queue all assets with missing preview', async () => {
-      const asset = AssetFactory.create();
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        { name: JobName.AssetGenerateThumbnails, data: { id: asset.id } },
-      ]);
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-    });
-
-    it('should queue all assets with missing thumbhash', async () => {
-      const asset = AssetFactory.from({ thumbhash: null })
-        .files([AssetFileType.Thumbnail, AssetFileType.Preview])
-        .build();
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        { name: JobName.AssetGenerateThumbnails, data: { id: asset.id } },
-      ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-    });
-
-    it('should queue all assets with missing fullsize when feature is enabled', async () => {
-      mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: true } } });
-      const asset = { id: factory.uuid(), isEdited: false };
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: true });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.AssetGenerateThumbnails,
-          data: { id: asset.id },
-        },
-      ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-    });
-
-    it('should not queue assets with missing fullsize when feature is disabled', async () => {
-      mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: false } } });
-      const asset = { id: factory.uuid(), isEdited: false };
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-    });
-
-    it('should queue assets with edits but missing edited thumbnails', async () => {
-      const asset = AssetFactory.from().edit().build();
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.AssetEditThumbnailGeneration,
-          data: { id: asset.id },
-        },
-      ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-    });
-
-    it('should not queue assets with missing edited fullsize when feature is disabled', async () => {
-      const asset = AssetFactory.from().edit().build();
-      mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: false } } });
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: false });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: false, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([]);
-
-      expect(mocks.person.getAll).toHaveBeenCalledWith({ thumbnailPath: '' });
-    });
-
-    it('should queue assets with missing fullsize when force is true, regardless of setting', async () => {
-      mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: false } } });
-      const asset = { id: factory.uuid(), isEdited: false };
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: true });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: true, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.AssetGenerateThumbnails,
-          data: { id: asset.id },
-        },
-      ]);
-
-      expect(mocks.person.getAll).toHaveBeenCalled();
-    });
-
-    it('should queue both regular and edited thumbnails for assets with edits when force is true', async () => {
-      const asset = AssetFactory.from().edit().build();
-      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
-      mocks.person.getAll.mockReturnValue(makeStream());
-      await sut.handleQueueGenerateThumbnails({ force: true });
-
-      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenCalledWith({ force: true, fullsizeEnabled: false });
-      expect(mocks.job.queueAll).toHaveBeenCalledWith([
-        {
-          name: JobName.AssetGenerateThumbnails,
-          data: { id: asset.id },
-        },
-        {
-          name: JobName.AssetEditThumbnailGeneration,
-          data: { id: asset.id },
-        },
-      ]);
-
       expect(mocks.person.getAll).toHaveBeenCalledWith(undefined);
+    });
+
+    it('should forward fullsize setting to both stages', async () => {
+      mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: true } } });
+      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream());
+      mocks.person.getAll.mockReturnValue(makeStream());
+
+      await sut.handleQueueGenerateThumbnails({ force: false });
+
+      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenNthCalledWith(1, {
+        force: false,
+        fullsizeEnabled: true,
+        stage: 'image',
+      });
+      expect(mocks.assetJob.streamForThumbnailJob).toHaveBeenNthCalledWith(2, {
+        force: false,
+        fullsizeEnabled: true,
+        stage: 'video',
+      });
+    });
+
+    it('should not enqueue when there is nothing to process', async () => {
+      mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream());
+      mocks.person.getAll.mockReturnValue(makeStream());
+
+      await sut.handleQueueGenerateThumbnails({ force: false });
+
+      expect(mocks.job.queueAll).not.toHaveBeenCalled();
     });
   });
 

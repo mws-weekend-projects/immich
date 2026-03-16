@@ -85,6 +85,8 @@ from
 where
   "asset"."deletedAt" is null
   and "asset"."visibility" != 'hidden'
+  and asset.type != 'VIDEO'
+  and lower(asset."originalFileName") not like '%.gif'
   and (
     not exists (
       select

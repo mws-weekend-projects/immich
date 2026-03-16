@@ -73,26 +73,35 @@ export class MediaService extends BaseService {
     let jobs: JobItem[] = [];
 
     const queueAll = async () => {
+      if (jobs.length === 0) {
+        return;
+      }
+
       await this.jobRepository.queueAll(jobs);
       jobs = [];
     };
 
     const fullsizeEnabled = config.image.fullsize.enabled;
-    for await (const asset of this.assetJobRepository.streamForThumbnailJob({ force, fullsizeEnabled })) {
-      if (force || !asset.isEdited) {
-        jobs.push({ name: JobName.AssetGenerateThumbnails, data: { id: asset.id } });
+    const queueAssets = async (stage: 'image' | 'video') => {
+      for await (const asset of this.assetJobRepository.streamForThumbnailJob({ force, fullsizeEnabled, stage })) {
+        if (force || !asset.isEdited) {
+          jobs.push({ name: JobName.AssetGenerateThumbnails, data: { id: asset.id } });
+        }
+
+        if (asset.isEdited) {
+          jobs.push({ name: JobName.AssetEditThumbnailGeneration, data: { id: asset.id } });
+        }
+
+        if (jobs.length >= JOBS_ASSET_PAGINATION_SIZE) {
+          await queueAll();
+        }
       }
 
-      if (asset.isEdited) {
-        jobs.push({ name: JobName.AssetEditThumbnailGeneration, data: { id: asset.id } });
-      }
+      await queueAll();
+    };
 
-      if (jobs.length >= JOBS_ASSET_PAGINATION_SIZE) {
-        await queueAll();
-      }
-    }
-
-    await queueAll();
+    // Fast-first ordering: render image thumbnails first, then people, then video/gif thumbnails.
+    await queueAssets('image');
 
     const people = this.personRepository.getAll(force ? undefined : { thumbnailPath: '' });
 
@@ -113,6 +122,7 @@ export class MediaService extends BaseService {
     }
 
     await queueAll();
+    await queueAssets('video');
 
     return JobStatus.Success;
   }
