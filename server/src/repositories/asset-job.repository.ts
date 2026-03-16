@@ -70,11 +70,20 @@ export class AssetJobRepository {
       .where('asset.visibility', '!=', sql.lit(AssetVisibility.Hidden))
       .$if(
         options.stage === 'image',
-        (qb) => qb.where(sql`asset.type != ${AssetType.Video} and lower(asset."originalFileName") not like '%.gif'`),
+        (qb) =>
+          qb
+            .where('asset.type', '!=', sql.lit(AssetType.Video))
+            .where((eb) => eb(sql`lower(asset."originalFileName")`, 'not like', sql.lit('%.gif'))),
       )
       .$if(
         options.stage === 'video',
-        (qb) => qb.where(sql`asset.type = ${AssetType.Video} or lower(asset."originalFileName") like '%.gif'`),
+        (qb) =>
+          qb.where((eb) =>
+            eb.or([
+              eb('asset.type', '=', sql.lit(AssetType.Video)),
+              eb(sql`lower(asset."originalFileName")`, 'like', sql.lit('%.gif')),
+            ]),
+          ),
       )
       .$if(!options.force, (qb) =>
         qb
