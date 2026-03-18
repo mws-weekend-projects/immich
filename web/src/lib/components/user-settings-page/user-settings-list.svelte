@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import ChangePinCodeSettings from '$lib/components/user-settings-page/PinCodeSettings.svelte';
   import DownloadSettings from '$lib/components/user-settings-page/download-settings.svelte';
   import FeatureSettings from '$lib/components/user-settings-page/feature-settings.svelte';
@@ -46,7 +46,7 @@
 
   let oauthOpen =
     oauth.isCallback(globalThis.location) ||
-    $page.url.searchParams.get(QueryParameter.OPEN_SETTING) === OpenQueryParam.OAUTH;
+    page.url.searchParams.get(QueryParameter.OPEN_SETTING) === OpenQueryParam.OAUTH;
 </script>
 
 <SettingAccordionState queryParam={QueryParameter.IS_OPEN}>

@@ -172,6 +172,10 @@ where
       )
     )
   )
+order by
+  "asset"."localDateTime" desc,
+  "asset"."fileCreatedAt" desc,
+  "asset"."createdAt" desc
 
 -- AssetJobRepository.getForMigrationJob
 select

@@ -588,6 +588,52 @@ describe(LibraryService.name, () => {
       ]);
     });
 
+    it('should queue post-sync sidecar checks as image-first newest-first', async () => {
+      const library = factory.library();
+      const newerImage = AssetFactory.create({
+        type: AssetType.Image,
+        localDateTime: new Date('2026-03-10T12:00:00.000Z'),
+        fileCreatedAt: new Date('2026-03-10T12:00:00.000Z'),
+        fileModifiedAt: new Date('2026-03-10T12:00:00.000Z'),
+        originalPath: '/data/user1/Camera/2026-03-10/newer.jpg',
+      });
+      const olderVideo = AssetFactory.create({
+        type: AssetType.Video,
+        localDateTime: new Date('2022-01-01T12:00:00.000Z'),
+        fileCreatedAt: new Date('2022-01-01T12:00:00.000Z'),
+        fileModifiedAt: new Date('2022-01-01T12:00:00.000Z'),
+        originalPath: '/data/user1/Camera/2022-01-01/older.mp4',
+      });
+
+      const mockLibraryJob: ILibraryFileJob = {
+        libraryId: library.id,
+        paths: [newerImage.originalPath, olderVideo.originalPath],
+      };
+
+      mocks.library.get.mockResolvedValue(library);
+      mocks.asset.createAll.mockResolvedValue([olderVideo, newerImage]);
+      mocks.asset.getByIds.mockResolvedValue([olderVideo, newerImage]);
+
+      await expect(sut.handleSyncFiles(mockLibraryJob)).resolves.toBe(JobStatus.Success);
+
+      expect(mocks.job.queueAll).toHaveBeenLastCalledWith([
+        {
+          name: JobName.SidecarCheck,
+          data: {
+            id: newerImage.id,
+            source: 'upload',
+          },
+        },
+        {
+          name: JobName.SidecarCheck,
+          data: {
+            id: olderVideo.id,
+            source: 'upload',
+          },
+        },
+      ]);
+    });
+
     it('should not import an asset to a soft deleted library', async () => {
       const library = factory.library({ deletedAt: new Date() });
 

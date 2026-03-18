@@ -7,6 +7,7 @@
 
   interface Props {
     url: string;
+    fallbackUrls?: string[];
     altText: string | undefined;
     title?: string | null;
     heightStyle?: string | undefined;
@@ -25,6 +26,7 @@
 
   let {
     url,
+    fallbackUrls = [],
     altText,
     title = null,
     heightStyle = undefined,
@@ -43,6 +45,17 @@
 
   let loaded = $state(false);
   let errored = $state(false);
+  let fallbackIndex = $state(0);
+
+  let candidateUrls = $derived([url, ...fallbackUrls].filter(Boolean));
+  let activeUrl = $derived(candidateUrls[fallbackIndex] ?? url);
+
+  $effect(() => {
+    url;
+    loaded = false;
+    errored = false;
+    fallbackIndex = 0;
+  });
 
   const setLoaded = () => {
     loaded = true;
@@ -50,6 +63,12 @@
   };
 
   const setErrored = () => {
+    const hasFallback = fallbackIndex + 1 < candidateUrls.length;
+    if (hasFallback) {
+      fallbackIndex += 1;
+      return;
+    }
+
     errored = true;
     onComplete?.(true);
   };
@@ -70,17 +89,19 @@
 {#if errored}
   <BrokenAsset class={[sharedClasses, brokenAssetClass]} width={widthStyle} height={heightStyle} />
 {:else}
-  <Image
-    src={url}
-    onLoad={setLoaded}
-    onError={setErrored}
-    class={['object-cover bg-gray-300 dark:bg-gray-700', sharedClasses, imageClass]}
-    {style}
-    alt={loaded || errored ? altText : ''}
-    draggable={false}
-    title={title ?? undefined}
-    loading={preload ? 'eager' : 'lazy'}
-  />
+  {#key activeUrl}
+    <Image
+      src={activeUrl}
+      onLoad={setLoaded}
+      onError={setErrored}
+      class={['object-cover bg-gray-300 dark:bg-gray-700', sharedClasses, imageClass]}
+      {style}
+      alt={loaded || errored ? altText : ''}
+      draggable={false}
+      title={title ?? undefined}
+      loading={preload ? 'eager' : 'lazy'}
+    />
+  {/key}
 {/if}
 
 {#if hidden}

@@ -118,6 +118,10 @@ export class AssetJobRepository {
             return or(conditions);
           }),
       )
+      // Visibility-first: surface newest assets first to improve "latest timeline" UX.
+      .orderBy('asset.localDateTime', 'desc')
+      .orderBy('asset.fileCreatedAt', 'desc')
+      .orderBy('asset.createdAt', 'desc')
       .stream();
   }
 

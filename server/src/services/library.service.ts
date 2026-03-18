@@ -26,6 +26,15 @@ import { JobOf } from 'src/types';
 import { mimeTypes } from 'src/utils/mime-types';
 import { handlePromiseError } from 'src/utils/misc';
 
+type FastFirstSortableAsset = {
+  id?: string;
+  type: AssetType;
+  localDateTime?: Date | string | null;
+  fileCreatedAt?: Date | string | null;
+  fileModifiedAt?: Date | string | null;
+  originalPath: string;
+};
+
 @Injectable()
 export class LibraryService extends BaseService {
   private watchLibraries = false;
@@ -247,21 +256,28 @@ export class LibraryService extends BaseService {
       return JobStatus.Failed;
     }
 
-    const assetImports: Insertable<AssetTable>[] = [];
-    await Promise.all(
+    const importedAssets = await Promise.all(
       job.paths.map((path) =>
-        this.processEntity(path, library.ownerId, job.libraryId)
-          .then((asset) => assetImports.push(asset))
-          .catch((error: any) => this.logger.error(`Error processing ${path} for library ${job.libraryId}: ${error}`)),
+        this.processEntity(path, library.ownerId, job.libraryId).catch((error: any) => {
+          this.logger.error(`Error processing ${path} for library ${job.libraryId}: ${error}`);
+          return null;
+        }),
       ),
     );
+
+    const assetImports = importedAssets.filter(
+      (asset): asset is NonNullable<(typeof importedAssets)[number]> => asset !== null,
+    );
+    assetImports.sort((a, b) => this.compareFastFirstAssets(a, b));
 
     const assetIds: string[] = [];
 
     for (let i = 0; i < assetImports.length; i += 5000) {
       // Chunk the imports to avoid the postgres limit of max parameters at once
       const chunk = assetImports.slice(i, i + 5000);
-      await this.assetRepository.createAll(chunk).then((assets) => assetIds.push(...assets.map((asset) => asset.id)));
+      const assets = await this.assetRepository.createAll(chunk);
+      assets.sort((a, b) => this.compareFastFirstAssets(a, b));
+      assetIds.push(...assets.map((asset) => asset.id));
     }
 
     const progressMessage =
@@ -418,13 +434,44 @@ export class LibraryService extends BaseService {
   async queuePostSyncJobs(assetIds: string[]) {
     this.logger.debug(`Queuing sidecar discovery for ${assetIds.length} asset(s)`);
 
+    const assets = (await this.assetRepository.getByIds(assetIds)) || [];
+    const sortedAssetIds =
+      assets.length > 0
+        ? assets.sort((a, b) => this.compareFastFirstAssets(a, b)).map((asset) => asset.id)
+        : assetIds;
+
     // We queue a sidecar discovery which, in turn, queues metadata extraction
     await this.jobRepository.queueAll(
-      assetIds.map((assetId) => ({
+      sortedAssetIds.map((assetId) => ({
         name: JobName.SidecarCheck,
         data: { id: assetId, source: 'upload' },
       })),
     );
+  }
+
+  private getFastFirstTimestamp(asset: Pick<FastFirstSortableAsset, 'localDateTime' | 'fileCreatedAt' | 'fileModifiedAt'>) {
+    const timestamp = asset.localDateTime ?? asset.fileCreatedAt ?? asset.fileModifiedAt;
+    if (!timestamp) {
+      return Number.MIN_SAFE_INTEGER;
+    }
+
+    return typeof timestamp === 'string' ? new Date(timestamp).valueOf() : timestamp.valueOf();
+  }
+
+  private compareFastFirstAssets(a: FastFirstSortableAsset, b: FastFirstSortableAsset): number {
+    const aIsImage = a.type === AssetType.Image;
+    const bIsImage = b.type === AssetType.Image;
+
+    if (aIsImage !== bIsImage) {
+      return aIsImage ? -1 : 1;
+    }
+
+    const timestampDiff = this.getFastFirstTimestamp(b) - this.getFastFirstTimestamp(a);
+    if (timestampDiff !== 0) {
+      return timestampDiff;
+    }
+
+    return b.originalPath.localeCompare(a.originalPath);
   }
 
   async queueScan(id: string) {

@@ -1,5 +1,5 @@
 import { Kysely } from 'kysely';
-import { AssetFileType } from 'src/enum';
+import { AssetFileType, AssetType } from 'src/enum';
 import { AssetJobRepository } from 'src/repositories/asset-job.repository';
 import { LoggingRepository } from 'src/repositories/logging.repository';
 import { DB } from 'src/schema';
@@ -113,6 +113,36 @@ describe(AssetJobRepository.name, () => {
       await expect(consume(stream)).resolves.not.toEqual(
         expect.arrayContaining([expect.objectContaining({ id: asset.id })]),
       );
+    });
+
+    it('should prioritize newest assets first within a stage', async () => {
+      const { ctx, sut } = setup();
+      const { user } = await ctx.newUser();
+      const older = new Date('2026-03-01T10:00:00.000Z');
+      const newer = new Date('2026-03-05T10:00:00.000Z');
+
+      const { asset: olderImage } = await ctx.newAsset({
+        ownerId: user.id,
+        type: AssetType.Image,
+        originalFileName: 'older.jpg',
+        localDateTime: older,
+        fileCreatedAt: older,
+      });
+      const { asset: newerImage } = await ctx.newAsset({
+        ownerId: user.id,
+        type: AssetType.Image,
+        originalFileName: 'newer.jpg',
+        localDateTime: newer,
+        fileCreatedAt: newer,
+      });
+      await ctx.newJobStatus({ assetId: olderImage.id, metadataExtractedAt: new Date() });
+      await ctx.newJobStatus({ assetId: newerImage.id, metadataExtractedAt: new Date() });
+
+      const stream = sut.streamForThumbnailJob({ force: false, fullsizeEnabled: false, stage: 'image' });
+      const rows = await consume(stream);
+      const relevantIds = rows.filter((row) => row.id === olderImage.id || row.id === newerImage.id).map((row) => row.id);
+
+      expect(relevantIds).toEqual([newerImage.id, olderImage.id]);
     });
   });
 });
