@@ -775,6 +775,50 @@ describe(MediaService.name, () => {
       });
     });
 
+    it('should try JPEG EXIF preview first for non-edited thumbnails', async () => {
+      const asset = AssetFactory.from({ originalFileName: 'file.jpg' })
+        .exif({ fileSizeInByte: 5000, profileDescription: 'Adobe RGB', bitsPerSample: 8, orientation: undefined })
+        .build();
+      mocks.media.extract.mockResolvedValue({ buffer: extractedBuffer, format: RawExtractedFormat.Jpeg });
+      mocks.media.getImageMetadata.mockResolvedValue({ width: 512, height: 384, isTransparent: false });
+      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: false } });
+      mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
+
+      await sut.handleGenerateThumbnails({ id: asset.id });
+
+      expect(mocks.media.extract).toHaveBeenCalledWith(asset.originalPath);
+      expect(mocks.media.decodeImage).toHaveBeenCalledWith(
+        extractedBuffer,
+        expect.objectContaining({
+          colorspace: Colorspace.P3,
+          processInvalidImages: false,
+          size: 1440,
+        }),
+      );
+    });
+
+    it('should fallback to original decode when JPEG EXIF preview is too small', async () => {
+      const asset = AssetFactory.from({ originalFileName: 'file.jpg' })
+        .exif({ fileSizeInByte: 5000, profileDescription: 'Adobe RGB', bitsPerSample: 8, orientation: undefined })
+        .build();
+      mocks.media.extract.mockResolvedValue({ buffer: extractedBuffer, format: RawExtractedFormat.Jpeg });
+      mocks.media.getImageMetadata.mockResolvedValue({ width: 180, height: 180, isTransparent: false });
+      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: false } });
+      mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
+
+      await sut.handleGenerateThumbnails({ id: asset.id });
+
+      expect(mocks.media.extract).toHaveBeenCalledWith(asset.originalPath);
+      expect(mocks.media.decodeImage).toHaveBeenCalledWith(
+        asset.originalPath,
+        expect.objectContaining({
+          colorspace: Colorspace.P3,
+          processInvalidImages: false,
+          size: 1440,
+        }),
+      );
+    });
+
     it('should not check transparency metadata for raw files without extracted images', async () => {
       const asset = AssetFactory.from({ originalFileName: 'file.dng' })
         .exif({ fileSizeInByte: 5000, profileDescription: 'Adobe RGB', bitsPerSample: 14, orientation: undefined })
@@ -1076,8 +1120,9 @@ describe(MediaService.name, () => {
       await sut.handleGenerateThumbnails({ id: asset.id });
 
       expect(mocks.media.decodeImage).toHaveBeenCalledOnce();
-      expect(mocks.media.decodeImage).toHaveBeenCalledWith(asset.originalPath, {
+      expect(mocks.media.decodeImage).toHaveBeenCalledWith(expect.any(Buffer), {
         colorspace: Colorspace.Srgb,
+        orientation: Number(asset.exifInfo.orientation),
         processInvalidImages: false,
         size: 1440,
       });

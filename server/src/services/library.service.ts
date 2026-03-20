@@ -35,6 +35,17 @@ type FastFirstSortableAsset = {
   originalPath: string;
 };
 
+type FastFirstPathCandidate = {
+  path: string;
+  timestamp: number;
+};
+
+const FAST_FIRST_WARMUP_SIZE = JOBS_LIBRARY_PAGINATION_SIZE * 3;
+const FAST_FIRST_BUFFER_SIZE = JOBS_LIBRARY_PAGINATION_SIZE * 8;
+const SAMSUNG_FILENAME_PATTERN = /^(20\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:$|[^0-9].*)/;
+const PATH_DATE_DASHED_PATTERN = /(?:^|[/\\])(20\d{2})-(\d{2})-(\d{2})(?:[/\\]|$)/g;
+const PATH_DATE_COMPACT_PATTERN = /(?:^|[/\\])(20\d{2})(\d{2})(\d{2})(?:[/\\]|$)/g;
+
 @Injectable()
 export class LibraryService extends BaseService {
   private watchLibraries = false;
@@ -474,6 +485,106 @@ export class LibraryService extends BaseService {
     return b.originalPath.localeCompare(a.originalPath);
   }
 
+  private compareFastFirstPathCandidates(a: FastFirstPathCandidate, b: FastFirstPathCandidate): number {
+    const timestampDiff = b.timestamp - a.timestamp;
+    if (timestampDiff !== 0) {
+      return timestampDiff;
+    }
+
+    return b.path.localeCompare(a.path);
+  }
+
+  private makeUtcTimestamp(
+    year: number,
+    month: number,
+    day: number,
+    hour: number = 0,
+    minute: number = 0,
+    second: number = 0,
+  ): number | null {
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) {
+      return null;
+    }
+
+    const timestamp = Date.UTC(year, month - 1, day, hour, minute, second);
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
+  private getTimestampFromSamsungFilename(assetPath: string): number | null {
+    const filename = parse(assetPath).name;
+    const match = SAMSUNG_FILENAME_PATTERN.exec(filename);
+    if (!match) {
+      return null;
+    }
+
+    const [, year, month, day, hour, minute, second] = match;
+    return this.makeUtcTimestamp(
+      Number.parseInt(year, 10),
+      Number.parseInt(month, 10),
+      Number.parseInt(day, 10),
+      Number.parseInt(hour, 10),
+      Number.parseInt(minute, 10),
+      Number.parseInt(second, 10),
+    );
+  }
+
+  private getTimestampFromPath(assetPath: string): number | null {
+    const dashedMatch = [...assetPath.matchAll(PATH_DATE_DASHED_PATTERN)].pop();
+    if (dashedMatch) {
+      const [, year, month, day] = dashedMatch;
+      const dashedTimestamp = this.makeUtcTimestamp(
+        Number.parseInt(year, 10),
+        Number.parseInt(month, 10),
+        Number.parseInt(day, 10),
+        12,
+      );
+      if (dashedTimestamp) {
+        return dashedTimestamp;
+      }
+    }
+
+    const compactMatch = [...assetPath.matchAll(PATH_DATE_COMPACT_PATTERN)].pop();
+    if (compactMatch) {
+      const [, year, month, day] = compactMatch;
+      return this.makeUtcTimestamp(
+        Number.parseInt(year, 10),
+        Number.parseInt(month, 10),
+        Number.parseInt(day, 10),
+        12,
+      );
+    }
+
+    return null;
+  }
+
+  private async getFastFirstPathCandidates(paths: string[]): Promise<FastFirstPathCandidate[]> {
+    return Promise.all(
+      paths.map(async (assetPath) => {
+        const samsungTimestamp = this.getTimestampFromSamsungFilename(assetPath);
+        if (samsungTimestamp) {
+          return { path: assetPath, timestamp: samsungTimestamp };
+        }
+
+        const pathTimestamp = this.getTimestampFromPath(assetPath);
+        if (pathTimestamp) {
+          return { path: assetPath, timestamp: pathTimestamp };
+        }
+
+        try {
+          const stat = await this.storageRepository.stat(assetPath);
+          const birthtime = stat.birthtime?.valueOf();
+          const fallback = stat.mtime?.valueOf() ?? Number.MIN_SAFE_INTEGER;
+          return {
+            path: assetPath,
+            timestamp: birthtime && birthtime > 0 ? birthtime : fallback,
+          };
+        } catch {
+          return { path: assetPath, timestamp: Number.MIN_SAFE_INTEGER };
+        }
+      }),
+    );
+  }
+
   async queueScan(id: string) {
     await this.findOrFail(id);
 
@@ -692,6 +803,33 @@ export class LibraryService extends BaseService {
 
     let importCount = 0;
     let crawlCount = 0;
+    let queuedChunks = 0;
+    const pendingPaths: FastFirstPathCandidate[] = [];
+
+    const queueFastFirstChunk = async (chunkSize: number) => {
+      if (pendingPaths.length === 0) {
+        return;
+      }
+
+      pendingPaths.sort((a, b) => this.compareFastFirstPathCandidates(a, b));
+      const chunk = pendingPaths.splice(0, chunkSize);
+      if (chunk.length === 0) {
+        return;
+      }
+
+      const paths = chunk.map((item) => item.path);
+      importCount += paths.length;
+      queuedChunks++;
+
+      await this.jobRepository.queue({
+        name: JobName.LibrarySyncFiles,
+        data: {
+          libraryId: library.id,
+          paths,
+          progressCounter: crawlCount,
+        },
+      });
+    };
 
     this.logger.log(`Starting disk crawl of ${validImportPaths.length} import path(s) for library ${library.id}...`);
 
@@ -700,25 +838,29 @@ export class LibraryService extends BaseService {
       const paths = await this.assetRepository.filterNewExternalAssetPaths(library.id, pathBatch);
 
       if (paths.length > 0) {
-        importCount += paths.length;
+        const scored = await this.getFastFirstPathCandidates(paths);
+        pendingPaths.push(...scored);
 
-        await this.jobRepository.queue({
-          name: JobName.LibrarySyncFiles,
-          data: {
-            libraryId: library.id,
-            paths,
-            progressCounter: crawlCount,
-          },
-        });
+        if (queuedChunks === 0 && pendingPaths.length >= FAST_FIRST_WARMUP_SIZE) {
+          await queueFastFirstChunk(JOBS_LIBRARY_PAGINATION_SIZE);
+        }
+
+        if (pendingPaths.length >= FAST_FIRST_BUFFER_SIZE) {
+          await queueFastFirstChunk(JOBS_LIBRARY_PAGINATION_SIZE);
+        }
       }
 
       this.logger.log(
-        `Crawled ${crawlCount} file(s) so far: ${paths.length} of current batch of ${pathBatch.length} will be imported to library ${library.id}...`,
+        `Crawled ${crawlCount} file(s) so far: ${paths.length} of current batch of ${pathBatch.length} are new in library ${library.id}...`,
       );
     }
 
+    while (pendingPaths.length > 0) {
+      await queueFastFirstChunk(JOBS_LIBRARY_PAGINATION_SIZE);
+    }
+
     this.logger.log(
-      `Finished disk crawl, ${crawlCount} file(s) found on disk and queued ${importCount} file(s) for import into ${library.id}`,
+      `Finished disk crawl, ${crawlCount} file(s) found on disk and queued ${importCount} file(s) across ${queuedChunks} chunk(s) for import into ${library.id}`,
     );
 
     await this.libraryRepository.update(job.id, { refreshedAt: new Date() });

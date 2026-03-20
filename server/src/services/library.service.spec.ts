@@ -182,6 +182,90 @@ describe(LibraryService.name, () => {
       });
     });
 
+    it('should queue newest Samsung filename paths first', async () => {
+      const library = factory.library({ importPaths: ['/foo'] });
+      const paths = [
+        '/foo/Camera/20240101_120000.jpg',
+        '/foo/Camera/20260301_120000.jpg',
+        '/foo/Camera/file.jpg',
+      ];
+
+      mocks.library.get.mockResolvedValue(library);
+      mocks.storage.walk.mockImplementation(async function* generator() {
+        yield paths;
+      });
+      mocks.asset.filterNewExternalAssetPaths.mockImplementation(async (_libraryId, pathBatch) => pathBatch);
+      mocks.storage.checkFileExists.mockResolvedValue(true);
+      mocks.storage.stat.mockImplementation(async (assetPath) => {
+        if (assetPath === '/foo') {
+          return { isDirectory: () => true } as Stats;
+        }
+
+        return {
+          birthtime: new Date('2025-05-15T12:00:00.000Z'),
+          mtime: new Date('2025-05-15T12:00:00.000Z'),
+          isDirectory: () => false,
+        } as Stats;
+      });
+
+      await sut.handleQueueSyncFiles({ id: library.id });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.LibrarySyncFiles,
+        data: {
+          libraryId: library.id,
+          paths: [
+            '/foo/Camera/20260301_120000.jpg',
+            '/foo/Camera/file.jpg',
+            '/foo/Camera/20240101_120000.jpg',
+          ],
+          progressCounter: 3,
+        },
+      });
+    });
+
+    it('should fallback to filesystem timestamp ordering when no date hint exists', async () => {
+      const library = factory.library({ importPaths: ['/foo'] });
+      const paths = ['/foo/a.jpg', '/foo/b.jpg'];
+
+      mocks.library.get.mockResolvedValue(library);
+      mocks.storage.walk.mockImplementation(async function* generator() {
+        yield paths;
+      });
+      mocks.asset.filterNewExternalAssetPaths.mockImplementation(async (_libraryId, pathBatch) => pathBatch);
+      mocks.storage.checkFileExists.mockResolvedValue(true);
+      mocks.storage.stat.mockImplementation(async (assetPath) => {
+        if (assetPath === '/foo') {
+          return { isDirectory: () => true } as Stats;
+        }
+
+        if (assetPath === '/foo/a.jpg') {
+          return {
+            birthtime: new Date('2024-01-01T00:00:00.000Z'),
+            mtime: new Date('2024-01-01T00:00:00.000Z'),
+            isDirectory: () => false,
+          } as Stats;
+        }
+
+        return {
+          birthtime: new Date('2026-01-01T00:00:00.000Z'),
+          mtime: new Date('2026-01-01T00:00:00.000Z'),
+          isDirectory: () => false,
+        } as Stats;
+      });
+
+      await sut.handleQueueSyncFiles({ id: library.id });
+
+      expect(mocks.job.queue).toHaveBeenCalledWith({
+        name: JobName.LibrarySyncFiles,
+        data: {
+          libraryId: library.id,
+          paths: ['/foo/b.jpg', '/foo/a.jpg'],
+          progressCounter: 2,
+        },
+      });
+    });
+
     it('should fail when library is not found', async () => {
       const library = factory.library({ importPaths: ['/foo', '/bar'] });
 
