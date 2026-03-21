@@ -5,10 +5,13 @@
   import { handleError } from '$lib/utils/handle-error';
   import { getBytesWithUnit } from '$lib/utils/byte-units';
   import {
+    getConfig,
     QueueCommand,
     QueueName,
     runQueueCommandLegacy,
+    TranscodePolicy,
     updateQueue,
+    updateConfig,
     type QueueResponseDto,
     type ServerStatsResponseDto,
   } from '@immich/sdk';
@@ -26,6 +29,7 @@
     toastManager,
   } from '@immich/ui';
   import { mdiCameraIris, mdiChartPie, mdiPlayCircle } from '@mdi/js';
+  import { onMount } from 'svelte';
   import { t } from 'svelte-i18n';
 
   type Props = {
@@ -42,6 +46,14 @@
 
   let queueActionInProgress = $state<Record<string, QueueAction | undefined>>({});
   let queuePresetInProgress = $state<QueuePresetAction | undefined>(undefined);
+  let previewOnlyInProgress = $state(false);
+  let previewOnlyNoTranscode = $state<boolean | null>(null);
+  let preferredTranscodePolicy = $state<TranscodePolicy>(TranscodePolicy.Optimal);
+  let autoResumeAfterVisibility = $state(true);
+  let autoResumeArmed = $state(false);
+  let autoResumeInProgress = $state(false);
+  let autoResumeStablePolls = 0;
+  const AUTO_RESUME_REQUIRED_POLLS = 2;
 
   const zeros = (value: number, maxLength = 13) => {
     const valueLength = value.toString().length;
@@ -76,6 +88,8 @@
 
   const getDisplayedWaiting = (queue: QueueResponseDto) =>
     queue.isPaused ? queue.statistics.waiting + queue.statistics.paused : queue.statistics.waiting;
+  const getQueueBacklog = (queue: QueueResponseDto) =>
+    queue.statistics.waiting + queue.statistics.active + queue.statistics.paused;
 
   const runQueueAction = async (queue: QueueResponseDto, action: QueueAction) => {
     if (queueActionInProgress[queue.name]) {
@@ -201,6 +215,9 @@
         for (const queueName of fastFirstRunQueues) {
           await startQueueIfIdle(queueName);
         }
+
+        autoResumeArmed = autoResumeAfterVisibility;
+        autoResumeStablePolls = 0;
       }
 
       await onQueueActionCompleted();
@@ -211,6 +228,112 @@
       queuePresetInProgress = undefined;
     }
   };
+
+  const syncPreviewOnlyState = async () => {
+    try {
+      const config = await getConfig();
+      const transcodePolicy = config.ffmpeg.transcode;
+      if (transcodePolicy !== TranscodePolicy.Disabled) {
+        preferredTranscodePolicy = transcodePolicy;
+      }
+      previewOnlyNoTranscode = transcodePolicy === TranscodePolicy.Disabled;
+    } catch (error) {
+      handleError(error, $t('errors.something_went_wrong'));
+    }
+  };
+
+  const togglePreviewOnlyVideoMode = async () => {
+    if (previewOnlyInProgress) {
+      return;
+    }
+
+    previewOnlyInProgress = true;
+
+    try {
+      const config = await getConfig();
+      const currentPolicy = config.ffmpeg.transcode;
+      if (currentPolicy !== TranscodePolicy.Disabled) {
+        preferredTranscodePolicy = currentPolicy;
+      }
+
+      const nextPolicy =
+        currentPolicy === TranscodePolicy.Disabled ? preferredTranscodePolicy : TranscodePolicy.Disabled;
+
+      await updateConfig({
+        systemConfigDto: {
+          ...config,
+          ffmpeg: {
+            ...config.ffmpeg,
+            transcode: nextPolicy,
+          },
+        },
+      });
+
+      previewOnlyNoTranscode = nextPolicy === TranscodePolicy.Disabled;
+      toastManager.success($t('saved'));
+    } catch (error) {
+      handleError(error, $t('errors.something_went_wrong'));
+    } finally {
+      previewOnlyInProgress = false;
+    }
+  };
+
+  const isVisibilityStageComplete = () => {
+    const metadataQueue = getQueueByName(QueueName.MetadataExtraction);
+    const thumbnailQueue = getQueueByName(QueueName.ThumbnailGeneration);
+
+    if (!metadataQueue || !thumbnailQueue) {
+      return false;
+    }
+
+    return getQueueBacklog(metadataQueue) === 0 && getQueueBacklog(thumbnailQueue) === 0;
+  };
+
+  const runAutoResumeIfReady = async () => {
+    if (!autoResumeArmed || autoResumeInProgress || queuePresetInProgress) {
+      return;
+    }
+
+    if (!isVisibilityStageComplete()) {
+      autoResumeStablePolls = 0;
+      return;
+    }
+
+    autoResumeStablePolls += 1;
+    if (autoResumeStablePolls < AUTO_RESUME_REQUIRED_POLLS) {
+      return;
+    }
+
+    autoResumeInProgress = true;
+
+    try {
+      for (const queueName of fastFirstPauseQueues) {
+        await applyQueuePauseState(queueName, false);
+      }
+
+      for (const queueName of fastFirstPauseQueues) {
+        await startQueueIfIdle(queueName);
+      }
+
+      await onQueueActionCompleted();
+      autoResumeArmed = false;
+      autoResumeStablePolls = 0;
+      toastManager.success('Auto resume finished');
+    } catch (error) {
+      handleError(error, $t('errors.something_went_wrong'));
+    } finally {
+      autoResumeInProgress = false;
+    }
+  };
+
+  onMount(() => {
+    void syncPreviewOnlyState();
+  });
+
+  $effect(() => {
+    queues;
+    void runAutoResumeIfReady();
+  });
 
   const TiB = 1024 ** 4;
   let [statsUsage, statsUsageUnit] = $derived(getBytesWithUnit(stats.usage, stats.usage > TiB ? 2 : 0));
@@ -332,6 +455,26 @@
           <button type="button" class="text-primary hover:underline" onclick={() => void runQueuePreset('resume-all')}>
             {$t('resume')} {$t('all')}
           </button>
+          <span class="text-light-500">|</span>
+          <button
+            type="button"
+            class="text-primary hover:underline"
+            onclick={() => (autoResumeAfterVisibility = !autoResumeAfterVisibility)}
+          >
+            Auto resume: {autoResumeAfterVisibility ? 'On' : 'Off'}
+          </button>
+          {#if autoResumeArmed}
+            <span class="text-light-500">|</span>
+            <span class="text-light-500">waiting for thumbs/meta</span>
+          {/if}
+          <span class="text-light-500">|</span>
+          {#if previewOnlyInProgress}
+            <span class="text-light-500">saving video mode...</span>
+          {:else}
+            <button type="button" class="text-primary hover:underline" onclick={() => void togglePreviewOnlyVideoMode()}>
+              Video preview only: {previewOnlyNoTranscode ? 'On' : 'Off'}
+            </button>
+          {/if}
         </div>
       {/if}
     </div>
