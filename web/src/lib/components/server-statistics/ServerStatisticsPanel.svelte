@@ -38,8 +38,10 @@
   const { stats, queues, queueEtaSeconds, onQueueActionCompleted }: Props = $props();
 
   type QueueAction = 'pause' | 'resume' | 'start';
+  type QueuePresetAction = 'fast-first' | 'pause-all' | 'resume-all';
 
   let queueActionInProgress = $state<Record<string, QueueAction | undefined>>({});
+  let queuePresetInProgress = $state<QueuePresetAction | undefined>(undefined);
 
   const zeros = (value: number, maxLength = 13) => {
     const valueLength = value.toString().length;
@@ -126,6 +128,89 @@
     QueueName.SmartSearch,
     QueueName.Ocr,
   ];
+
+  const fastFirstRunQueues = [QueueName.MetadataExtraction, QueueName.ThumbnailGeneration, QueueName.Library];
+  const fastFirstPauseQueues = [
+    QueueName.VideoConversion,
+    QueueName.FaceDetection,
+    QueueName.FacialRecognition,
+    QueueName.SmartSearch,
+    QueueName.Ocr,
+  ];
+
+  const getQueueByName = (queueName: QueueName) => workerQueues.find((queue) => queue.name === queueName);
+
+  const applyQueuePauseState = async (queueName: QueueName, isPaused: boolean) => {
+    const queue = getQueueByName(queueName);
+    if (!queue || queue.isPaused === isPaused) {
+      return;
+    }
+
+    await updateQueue({ name: queue.name, queueUpdateDto: { isPaused } });
+  };
+
+  const startQueueIfIdle = async (queueName: QueueName) => {
+    const queue = getQueueByName(queueName);
+    if (!queue) {
+      return;
+    }
+
+    if (queue.isPaused) {
+      await updateQueue({ name: queue.name, queueUpdateDto: { isPaused: false } });
+    }
+
+    if (queue.statistics.active > 0) {
+      return;
+    }
+
+    await runQueueCommandLegacy({
+      name: queue.name,
+      queueCommandDto: { command: QueueCommand.Start, force: false },
+    });
+  };
+
+  const runQueuePreset = async (preset: QueuePresetAction) => {
+    if (queuePresetInProgress) {
+      return;
+    }
+
+    queuePresetInProgress = preset;
+
+    try {
+      if (preset === 'pause-all') {
+        for (const queueName of queueOrder) {
+          await applyQueuePauseState(queueName, true);
+        }
+      }
+
+      if (preset === 'resume-all') {
+        for (const queueName of queueOrder) {
+          await applyQueuePauseState(queueName, false);
+        }
+      }
+
+      if (preset === 'fast-first') {
+        for (const queueName of fastFirstPauseQueues) {
+          await applyQueuePauseState(queueName, true);
+        }
+
+        for (const queueName of fastFirstRunQueues) {
+          await applyQueuePauseState(queueName, false);
+        }
+
+        for (const queueName of fastFirstRunQueues) {
+          await startQueueIfIdle(queueName);
+        }
+      }
+
+      await onQueueActionCompleted();
+      toastManager.success($t('saved'));
+    } catch (error) {
+      handleError(error, $t('errors.something_went_wrong'));
+    } finally {
+      queuePresetInProgress = undefined;
+    }
+  };
 
   const TiB = 1024 ** 4;
   let [statsUsage, statsUsageUnit] = $derived(getBytesWithUnit(stats.usage, stats.usage > TiB ? 2 : 0));
@@ -230,7 +315,26 @@
   </div>
 
   <div>
-    <Text class="mb-2 mt-4" fontWeight="medium">{$t('jobs')}</Text>
+    <div class="mb-2 mt-4 flex items-center justify-between gap-3">
+      <Text fontWeight="medium">{$t('jobs')}</Text>
+      {#if queuePresetInProgress}
+        <span class="text-xs text-light-500">{$t('loading')}</span>
+      {:else}
+        <div class="flex items-center gap-2 text-xs">
+          <button type="button" class="text-primary hover:underline" onclick={() => void runQueuePreset('fast-first')}>
+            Fast first
+          </button>
+          <span class="text-light-500">|</span>
+          <button type="button" class="text-primary hover:underline" onclick={() => void runQueuePreset('pause-all')}>
+            {$t('pause')} {$t('all')}
+          </button>
+          <span class="text-light-500">|</span>
+          <button type="button" class="text-primary hover:underline" onclick={() => void runQueuePreset('resume-all')}>
+            {$t('resume')} {$t('all')}
+          </button>
+        </div>
+      {/if}
+    </div>
     <Table striped size="small" class="table-fixed">
       <TableHeader>
         <TableHeading class="w-[36%] text-left">{$t('jobs')}</TableHeading>
