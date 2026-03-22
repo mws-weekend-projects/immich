@@ -1,9 +1,10 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { IsArray, IsString } from 'class-validator';
 import type { BBoxDto } from 'src/dtos/bbox.dto';
 import { AssetOrder, AssetVisibility } from 'src/enum';
 import { ValidateBBox } from 'src/utils/bbox';
-import { ValidateBoolean, ValidateEnum, ValidateUUID } from 'src/validation';
+import { Optional, ValidateBoolean, ValidateEnum, ValidateUUID } from 'src/validation';
 
 export class TimeBucketDto {
   @ValidateUUID({ optional: true, description: 'Filter assets by specific user ID' })
@@ -35,6 +36,24 @@ export class TimeBucketDto {
     description: 'Include stacked assets in the response. When true, only primary assets from stacks are returned.',
   })
   withStacked?: boolean;
+
+  @ApiPropertyOptional({
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Exclude assets whose original file path contains any of these values',
+  })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    const values = Array.isArray(value) ? value : [value];
+    return values.map((item) => String(item).trim()).filter((item) => item.length > 0);
+  })
+  @Optional()
+  @IsArray()
+  @IsString({ each: true })
+  excludePaths?: string[];
 
   @ValidateBoolean({ optional: true, description: 'Include assets shared by partners' })
   withPartners?: boolean;

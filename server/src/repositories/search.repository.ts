@@ -61,6 +61,7 @@ export interface SearchDateOptions {
 }
 
 export interface SearchPathOptions {
+  excludePaths?: string[];
   encodedVideoPath?: string;
   originalFileName?: string;
   originalPath?: string;

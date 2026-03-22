@@ -1,4 +1,5 @@
 import { authManager } from '$lib/managers/auth-manager.svelte';
+import { getActiveExcludePaths } from '$lib/utils/folder-filters';
 import { toISOYearMonthUTC } from '$lib/utils/timeline-util';
 import { getTimeBucket } from '@immich/sdk';
 import type { MonthGroup } from '../month-group.svelte';
@@ -16,10 +17,12 @@ export async function loadFromTimeBuckets(
   }
 
   const timeBucket = toISOYearMonthUTC(monthGroup.yearMonth);
+  const excludePaths = getActiveExcludePaths();
   const bucketResponse = await getTimeBucket(
     {
       ...authManager.params,
       ...options,
+      excludePaths,
       timeBucket,
     },
     { signal },
@@ -34,6 +37,7 @@ export async function loadFromTimeBuckets(
       {
         ...authManager.params,
         albumId: options.timelineAlbumId,
+        excludePaths,
         timeBucket,
       },
       { signal },

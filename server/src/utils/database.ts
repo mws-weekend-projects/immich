@@ -365,6 +365,15 @@ export function searchAssetBuilder(kysely: Kysely<DB>, options: AssetSearchBuild
         )
         .where('asset_file.path', '=', options.encodedVideoPath!),
     )
+    .$if(!!options.excludePaths && options.excludePaths.length > 0, (qb) =>
+      qb.where((eb) =>
+        eb.and(
+          options.excludePaths!.map((path) =>
+            eb(sql`f_unaccent(asset."originalPath")`, 'not ilike', sql`'%' || f_unaccent(${path}) || '%'`),
+          ),
+        ),
+      ),
+    )
     .$if(!!options.originalPath, (qb) =>
       qb.where(sql`f_unaccent(asset."originalPath")`, 'ilike', sql`'%' || f_unaccent(${options.originalPath}) || '%'`),
     )

@@ -29,6 +29,7 @@
   import { handlePromiseError } from '$lib/utils';
   import { cancelMultiselect } from '$lib/utils/asset-utils';
   import { parseUtcDate } from '$lib/utils/date-time';
+  import { getActiveExcludePaths } from '$lib/utils/folder-filters';
   import { handleError } from '$lib/utils/handle-error';
   import { isAlbumsRoute, isPeopleRoute } from '$lib/utils/navigation';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
@@ -133,11 +134,13 @@
       return;
     }
     isLoading = true;
+    const excludePaths = getActiveExcludePaths();
 
     const searchDto: SearchTerms = {
       page: nextPage,
       withExif: true,
       ...terms,
+      ...(excludePaths ? { excludePaths } : {}),
     };
 
     try {

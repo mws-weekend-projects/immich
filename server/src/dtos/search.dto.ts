@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsArray, IsInt, IsNotEmpty, IsString, Max, Min } from 'class-validator';
 import { Place } from 'src/database';
 import { HistoryBuilder, Property } from 'src/decorators';
 import { AlbumResponseDto } from 'src/dtos/album.dto';
@@ -35,6 +35,24 @@ class BaseSearchDto {
 
   @ValidateEnum({ enum: AssetVisibility, name: 'AssetVisibility', optional: true, description: 'Filter by visibility' })
   visibility?: AssetVisibility;
+
+  @ApiPropertyOptional({
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Exclude assets whose original file path contains any of these values',
+  })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    const values = Array.isArray(value) ? value : [value];
+    return values.map((item) => String(item).trim()).filter((item) => item.length > 0);
+  })
+  @Optional()
+  @IsArray()
+  @IsString({ each: true })
+  excludePaths?: string[];
 
   @ValidateDate({ optional: true, description: 'Filter by creation date (before)' })
   createdBefore?: Date;
