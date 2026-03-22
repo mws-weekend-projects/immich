@@ -9287,6 +9287,18 @@
             }
           },
           {
+            "name": "excludePaths",
+            "required": false,
+            "in": "query",
+            "description": "Exclude assets whose original file path contains any of these values",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
             "name": "isEncoded",
             "required": false,
             "in": "query",
@@ -13488,6 +13500,18 @@
             }
           },
           {
+            "name": "excludePaths",
+            "required": false,
+            "in": "query",
+            "description": "Exclude assets whose original file path contains any of these values",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
             "name": "isFavorite",
             "required": false,
             "in": "query",
@@ -13671,6 +13695,18 @@
             "schema": {
               "example": "11.075683,49.416711,11.117589,49.454875",
               "type": "string"
+            }
+          },
+          {
+            "name": "excludePaths",
+            "required": false,
+            "in": "query",
+            "description": "Exclude assets whose original file path contains any of these values",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           {
@@ -18944,6 +18980,13 @@
             "description": "Filter by encoded video file path",
             "type": "string"
           },
+          "excludePaths": {
+            "description": "Exclude assets whose original file path contains any of these values",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "id": {
             "description": "Filter by asset ID",
             "format": "uuid",
@@ -20718,6 +20761,13 @@
             "description": "Device ID to filter by",
             "type": "string"
           },
+          "excludePaths": {
+            "description": "Exclude assets whose original file path contains any of these values",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "isEncoded": {
             "description": "Filter by encoded status",
             "type": "boolean"
@@ -22091,6 +22141,13 @@
             "description": "Device ID to filter by",
             "type": "string"
           },
+          "excludePaths": {
+            "description": "Exclude assets whose original file path contains any of these values",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "isEncoded": {
             "description": "Filter by encoded status",
             "type": "boolean"
@@ -22359,6 +22416,13 @@
           "deviceId": {
             "description": "Device ID to filter by",
             "type": "string"
+          },
+          "excludePaths": {
+            "description": "Exclude assets whose original file path contains any of these values",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "isEncoded": {
             "description": "Filter by encoded status",

@@ -87,6 +87,7 @@ interface AssetBuilderOptions {
 }
 
 export interface TimeBucketOptions extends AssetBuilderOptions {
+  excludePaths?: string[];
   order?: AssetOrder;
 }
 
@@ -165,6 +166,23 @@ const withBoundingBox = <T>(qb: SelectQueryBuilder<DB, 'asset' | 'asset_exif', T
 
   return withLatitude.where((eb) =>
     eb.or([eb('asset_exif.longitude', '>=', west), eb('asset_exif.longitude', '<=', east)]),
+  );
+};
+
+const withExcludedPaths = <TB extends 'asset' | 'asset_exif', T>(
+  qb: SelectQueryBuilder<DB, TB, T>,
+  excludePaths?: string[],
+) => {
+  if (!excludePaths || excludePaths.length === 0) {
+    return qb;
+  }
+
+  return qb.where((eb) =>
+    eb.and(
+      excludePaths.map((path) =>
+        eb(sql`f_unaccent(asset."originalPath")`, 'not ilike', sql`'%' || f_unaccent(${path}) || '%'`),
+      ),
+    ),
   );
 };
 
@@ -715,6 +733,7 @@ export class AssetRepository {
 
             return withBoundingBox(withBoundingCircle, bbox);
           })
+          .$call((qb) => withExcludedPaths(qb, options.excludePaths))
           .$if(options.visibility === undefined, withDefaultVisibility)
           .$if(!!options.visibility, (qb) => qb.where('asset.visibility', '=', options.visibility!))
           .$if(!!options.albumId, (qb) =>
@@ -802,6 +821,7 @@ export class AssetRepository {
 
             return withBoundingBox(withBoundingCircle, bbox);
           })
+          .$call((qb) => withExcludedPaths(qb, options.excludePaths))
           .where(truncatedDate(), '=', timeBucket.replace(/^[+-]/, ''))
           .$if(!!options.albumId, (qb) =>
             qb.where((eb) =>

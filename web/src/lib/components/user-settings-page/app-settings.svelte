@@ -8,9 +8,11 @@
     alwaysLoadOriginalFile,
     alwaysLoadOriginalVideo,
     autoPlayVideo,
+    hiddenPathFilters,
     locale,
     loopVideo,
     playVideoThumbnailOnHover,
+    showHiddenPathFilters,
     showDeleteModal,
   } from '$lib/stores/preferences.store';
   import { createDateFormatter, findLocale } from '$lib/utils';
@@ -107,6 +109,25 @@
 
       <Field label={$t('permanent_deletion_warning')} description={$t('permanent_deletion_warning_setting_description')}
         ><Switch bind:checked={$showDeleteModal} />
+      </Field>
+
+      <Field
+        label="Hidden folders (default filter)"
+        description="One entry per line (or comma-separated). Matching path fragments are hidden by default."
+      >
+        <textarea
+          bind:value={$hiddenPathFilters}
+          class="w-full h-28 rounded-2xl border border-gray-300 dark:border-gray-700 bg-transparent p-3 text-sm"
+          placeholder="whatsapp&#10;telegram&#10;/Screenshots/"
+          spellcheck="false"
+        ></textarea>
+      </Field>
+
+      <Field
+        label="Show hidden folders"
+        description="Temporarily show assets from filtered folders in timeline and search."
+      >
+        <Switch bind:checked={$showHiddenPathFilters} />
       </Field>
     </div>
   </div>

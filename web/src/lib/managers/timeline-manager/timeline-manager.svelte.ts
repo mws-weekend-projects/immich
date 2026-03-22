@@ -15,6 +15,7 @@ import {
 } from '$lib/managers/timeline-manager/internal/search-support.svelte';
 import { WebsocketSupport } from '$lib/managers/timeline-manager/internal/websocket-support.svelte';
 import { CancellableTask } from '$lib/utils/cancellable-task';
+import { getActiveExcludePaths } from '$lib/utils/folder-filters';
 import { PersistedLocalStorage } from '$lib/utils/persisted';
 import {
   isAssetResponseDto,
@@ -232,9 +233,11 @@ export class TimelineManager extends VirtualScrollManager {
   }
 
   async #initializeMonthGroups() {
+    const excludePaths = getActiveExcludePaths();
     const timebuckets = await getTimeBuckets({
       ...authManager.params,
       ...this.#options,
+      excludePaths,
     });
 
     this.months = timebuckets.map((timeBucket) => {
