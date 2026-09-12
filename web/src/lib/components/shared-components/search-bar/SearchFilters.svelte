@@ -28,6 +28,7 @@
   import SearchRatingsSection from './SearchRatingsSection.svelte';
   import SearchTagsSection from './SearchTagsSection.svelte';
   import SearchTextSection from './SearchTextSection.svelte';
+  import SearchSortSection from './SearchSortSection.svelte';
   import {
     getPeople,
     getSearchDatePreset,
@@ -219,6 +220,11 @@
           {/each}
         </div>
       </div>
+      {#if searchManager.filter.queryType === 'smart'}
+        <div class="px-5 pt-5">
+          <SearchSortSection />
+        </div>
+      {/if}
       {#if activeFilter}
         <div class="px-5 pt-5">
           {#if activeFilter === 'type'}
