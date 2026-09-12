@@ -7,6 +7,7 @@
 
   interface Props {
     url: string;
+    fallbackUrls?: string[];
     altText: string | undefined;
     title?: string | null;
     heightStyle?: string | undefined;
@@ -26,6 +27,7 @@
 
   let {
     url,
+    fallbackUrls = [],
     altText,
     title = null,
     heightStyle = undefined,
@@ -45,6 +47,19 @@
 
   let loaded = $state(false);
   let errored = $state(false);
+  let fallbackIndex = $state(0);
+  let activeUrl = $state(url);
+
+  let candidateUrls = $derived([url, ...fallbackUrls].filter(Boolean));
+
+  $effect(() => {
+    // Reset the fallback chain when the asset URL changes.
+    candidateUrls;
+    activeUrl = url;
+    fallbackIndex = 0;
+    loaded = false;
+    errored = false;
+  });
 
   const setLoaded = () => {
     loaded = true;
@@ -52,6 +67,13 @@
   };
 
   const setErrored = () => {
+    if (fallbackIndex < candidateUrls.length - 1) {
+      fallbackIndex += 1;
+      activeUrl = candidateUrls[fallbackIndex];
+      loaded = false;
+      return;
+    }
+
     errored = true;
     onComplete?.(true);
   };
@@ -74,17 +96,19 @@
 {#if errored}
   <BrokenAsset class={[sharedClasses, brokenAssetClass]} width={widthStyle} height={heightStyle} />
 {:else}
-  <Image
-    src={url}
-    onLoad={setLoaded}
-    onError={setErrored}
-    class={['bg-gray-300 object-cover dark:bg-gray-700', sharedClasses, imageClass]}
-    {style}
-    alt={loaded || errored ? altText : ''}
-    draggable={false}
-    title={title ?? undefined}
-    loading={preload ? 'eager' : 'lazy'}
-  />
+  {#key activeUrl}
+    <Image
+      src={activeUrl}
+      onLoad={setLoaded}
+      onError={setErrored}
+      class={['bg-gray-300 object-cover dark:bg-gray-700', sharedClasses, imageClass]}
+      {style}
+      alt={loaded || errored ? altText : ''}
+      draggable={false}
+      title={title ?? undefined}
+      loading={preload ? 'eager' : 'lazy'}
+    />
+  {/key}
 {/if}
 
 {#if hidden}

@@ -256,8 +256,13 @@ export class MediaService extends BaseService {
   }
 
   private async extractOriginalImage(asset: ThumbnailAsset, image: SystemConfig['image'], useEdits = false) {
-    const isExtractEmbedded = image.extractEmbedded && mimeTypes.isRaw(asset.originalFileName);
-    const extracted = isExtractEmbedded ? await this.extractImage(asset.originalPath, image.preview.size) : null;
+    const isRawAsset = mimeTypes.isRaw(asset.originalFileName);
+    const isJpegAsset = mimeTypes.lookup(asset.originalFileName) === 'image/jpeg';
+    // Fast visibility first: use embedded JPEG previews even when RAW extraction is disabled.
+    // Keep edited derivatives on the original decode path to avoid edit-coordinate drift.
+    const shouldExtractEmbedded = (isRawAsset && image.extractEmbedded) || (!useEdits && isJpegAsset);
+    const minimumExtractSize = isRawAsset ? image.preview.size : image.thumbnail.size;
+    const extracted = shouldExtractEmbedded ? await this.extractImage(asset.originalPath, minimumExtractSize) : null;
     const isGenerateFullsize =
       ((image.fullsize.enabled || asset.exifInfo.projectionType === 'EQUIRECTANGULAR') &&
         !mimeTypes.isWebSupportedImage(asset.originalPath)) ||
