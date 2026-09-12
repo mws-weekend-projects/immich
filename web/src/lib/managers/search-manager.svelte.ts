@@ -95,6 +95,7 @@ class SearchManager {
             ? MediaType.Video
             : MediaType.All,
       rating: searchQuery.rating,
+      order: searchQuery.order,
     };
   }
 
@@ -134,6 +135,7 @@ class SearchManager {
       tagIds: this.filter.tagIds === null ? null : this.filter.tagIds.size > 0 ? [...this.filter.tagIds] : undefined,
       type,
       rating: this.filter.rating,
+      ...(this.filter.queryType === 'smart' && this.filter.order ? { order: this.filter.order } : {}),
     };
   }
 

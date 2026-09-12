@@ -137,7 +137,8 @@
       searchManager.filter.camera.make !== undefined ||
       searchManager.filter.camera.model !== undefined ||
       searchManager.filter.camera.lensModel !== undefined ||
-      searchManager.filter.rating,
+      searchManager.filter.rating ||
+      searchManager.filter.order,
   );
 
   const clear = () => {
