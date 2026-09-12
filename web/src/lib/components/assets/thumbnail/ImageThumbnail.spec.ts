@@ -35,6 +35,30 @@ describe('ImageThumbnail component', () => {
     expect(baseElement.querySelector('span')?.textContent).toEqual('error_loading_image');
   });
 
+  it('falls back through alternate URLs before showing BrokenAsset', async () => {
+    const { baseElement } = render(ImageThumbnail, {
+      url: '/test-thumbnail.jpg',
+      fallbackUrls: ['/test-preview.jpg', '/test-original.jpg'],
+      altText: 'Test image',
+      widthStyle: '200px',
+    });
+
+    let img = baseElement.querySelector('img')!;
+    expect(img.getAttribute('src')).toBe('/test-thumbnail.jpg');
+
+    await fireEvent.error(img);
+    img = baseElement.querySelector('img')!;
+    expect(img.getAttribute('src')).toBe('/test-preview.jpg');
+
+    await fireEvent.error(img);
+    img = baseElement.querySelector('img')!;
+    expect(img.getAttribute('src')).toBe('/test-original.jpg');
+
+    await fireEvent.error(img);
+    expect(baseElement.querySelector('img')).toBeNull();
+    expect(baseElement.querySelector('span')?.textContent).toEqual('error_loading_image');
+  });
+
   it('calls onComplete with false on successful load', async () => {
     const onComplete = vi.fn();
     const { baseElement } = render(ImageThumbnail, {

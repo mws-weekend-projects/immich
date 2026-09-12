@@ -83,6 +83,17 @@
   let width = $derived(thumbnailSize || thumbnailWidth || 235);
   let height = $derived(thumbnailSize || thumbnailHeight || 235);
 
+  let imageFallbackUrls = $derived.by(() => {
+    if (!asset.isImage) {
+      return [];
+    }
+
+    return [
+      getAssetMediaUrl({ id: asset.id, size: AssetMediaSize.Preview, cacheKey: asset.thumbhash }),
+      getAssetMediaUrl({ id: asset.id, size: AssetMediaSize.Original, cacheKey: asset.thumbhash }),
+    ];
+  });
+
   let assetOwner = $derived(albumUsers?.find((user) => user.id === asset.ownerId) ?? null);
 
   const onIconClickedHandler = (e?: MouseEvent) => {
@@ -248,6 +259,7 @@
         class={['absolute group-focus-visible:rounded-lg', { 'rounded-xl': selected }, imageClass]}
         brokenAssetClass={['z-1 absolute group-focus-visible:rounded-lg', selected && 'rounded-2xl', brokenAssetClass]}
         url={getAssetMediaUrl({ id: asset.id, size: AssetMediaSize.Thumbnail, cacheKey: asset.thumbhash })}
+        fallbackUrls={imageFallbackUrls}
         altText={$getAltText(asset)}
         widthStyle="{width}px"
         heightStyle="{height}px"
