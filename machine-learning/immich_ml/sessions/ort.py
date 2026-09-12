@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import numpy as np
@@ -11,6 +13,35 @@ from immich_ml.models.constants import SUPPORTED_PROVIDERS
 from immich_ml.schemas import ModelPrecision, SessionNode
 
 from ..config import log, settings
+
+MigraphxInputSignature = tuple[tuple[str, str, tuple[int, ...]], ...]
+
+_migraphx_registry_lock = Lock()
+_migraphx_model_locks: dict[str, Lock] = {}
+_migraphx_compiled_inputs: set[tuple[str, MigraphxInputSignature]] = set()
+
+
+def _migraphx_get_model_lock(model_key: str) -> Lock:
+    with _migraphx_registry_lock:
+        lock = _migraphx_model_locks.get(model_key)
+        if lock is None:
+            lock = Lock()
+            _migraphx_model_locks[model_key] = lock
+        return lock
+
+
+def _migraphx_has_compiled_input(key: tuple[str, MigraphxInputSignature]) -> bool:
+    with _migraphx_registry_lock:
+        return key in _migraphx_compiled_inputs
+
+
+def _migraphx_mark_compiled_input(key: tuple[str, MigraphxInputSignature]) -> None:
+    with _migraphx_registry_lock:
+        _migraphx_compiled_inputs.add(key)
+
+
+def _migraphx_input_signature(input_feed: dict[str, NDArray[Any]]) -> MigraphxInputSignature:
+    return tuple((name, str(value.dtype), tuple(value.shape)) for name, value in sorted(input_feed.items()))
 
 
 class OrtSession:
@@ -34,21 +65,39 @@ class OrtSession:
             sess_options=self.sess_options,
         )
 
-    def get_inputs(self) -> list[SessionNode]:
-        inputs: list[SessionNode] = self.session.get_inputs()
+    def get_inputs(self) -> Sequence[SessionNode]:
+        inputs: Sequence[SessionNode] = self.session.get_inputs()
         return inputs
 
-    def get_outputs(self) -> list[SessionNode]:
-        outputs: list[SessionNode] = self.session.get_outputs()
+    def get_outputs(self) -> Sequence[SessionNode]:
+        outputs: Sequence[SessionNode] = self.session.get_outputs()
         return outputs
+
+    def get_metadata(self) -> dict[str, str]:
+        metadata: dict[str, str] = self.session.get_modelmeta().custom_metadata_map
+        return metadata
 
     def run(
         self,
         output_names: list[str] | None,
-        input_feed: dict[str, NDArray[np.float32]] | dict[str, NDArray[np.int32]],
+        input_feed: dict[str, NDArray[np.float32]] | dict[str, NDArray[np.int32]] | dict[str, NDArray[np.uint8]],
         run_options: Any = None,
     ) -> list[NDArray[np.float32]]:
-        outputs: list[NDArray[np.float32]] = self.session.run(output_names, input_feed, run_options)
+        if "MIGraphXExecutionProvider" in self.providers:
+            model_key = self.model_path.resolve().as_posix()
+            input_key = (model_key, _migraphx_input_signature(input_feed))
+            if not _migraphx_has_compiled_input(input_key):
+                model_lock = _migraphx_get_model_lock(model_key)
+                with model_lock:
+                    if not _migraphx_has_compiled_input(input_key):
+                        outputs: list[NDArray[np.float32]] = self.session.run(output_names, input_feed, run_options)
+                        _migraphx_mark_compiled_input(input_key)
+                        return outputs
+
+            outputs = self.session.run(output_names, input_feed, run_options)
+            return outputs
+
+        outputs = self.session.run(output_names, input_feed, run_options)
         return outputs
 
     @property

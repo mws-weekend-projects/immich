@@ -104,7 +104,15 @@ describe(TagService.name, () => {
   describe('update', () => {
     it('should throw an error for no update permission', async () => {
       mocks.access.tag.checkOwnerAccess.mockResolvedValue(new Set());
-      await expect(sut.update(authStub.admin, 'tag-1', { color: '#000000' })).rejects.toBeInstanceOf(
+      await expect(sut.update(authStub.admin, 'tag-1', { name: 'tag', color: '#000000' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(mocks.tag.update).not.toHaveBeenCalled();
+    });
+
+    it('should throw an error if updated tag name has a slash', async () => {
+      mocks.access.tag.checkOwnerAccess.mockResolvedValue(new Set(['tag-parent']));
+      await expect(sut.update(authStub.admin, 'tag-1', { name: 'tag/test2', color: '#000000' })).rejects.toBeInstanceOf(
         BadRequestException,
       );
       expect(mocks.tag.update).not.toHaveBeenCalled();
@@ -113,8 +121,11 @@ describe(TagService.name, () => {
     it('should update a tag', async () => {
       mocks.access.tag.checkOwnerAccess.mockResolvedValue(new Set(['tag-1']));
       mocks.tag.update.mockResolvedValue(tagStub.colorCreate);
-      await expect(sut.update(authStub.admin, 'tag-1', { color: '#000000' })).resolves.toEqual(tagResponseStub.color1);
-      expect(mocks.tag.update).toHaveBeenCalledWith('tag-1', { color: '#000000' });
+      mocks.tag.get.mockResolvedValue(tagStub.tag);
+      await expect(sut.update(authStub.admin, 'tag-1', { name: 'tag', color: '#000000' })).resolves.toEqual(
+        tagResponseStub.color1,
+      );
+      expect(mocks.tag.update).toHaveBeenCalledWith('tag-1', { value: 'tag', color: '#000000' });
     });
   });
 
@@ -206,16 +217,22 @@ describe(TagService.name, () => {
         count: 6,
       });
       expect(mocks.asset.upsertExif).toHaveBeenCalledWith(
-        { assetId: 'asset-1', lockedProperties: ['tags'], tags: ['tag-1', 'tag-2'] },
-        { lockedPropertiesBehavior: 'append' },
+        expect.objectContaining({
+          exif: { assetId: 'asset-1', lockedProperties: ['tags'], tags: ['tag-1', 'tag-2'] },
+          lockedPropertiesBehavior: 'append',
+        }),
       );
       expect(mocks.asset.upsertExif).toHaveBeenCalledWith(
-        { assetId: 'asset-2', lockedProperties: ['tags'], tags: ['tag-1', 'tag-2'] },
-        { lockedPropertiesBehavior: 'append' },
+        expect.objectContaining({
+          exif: { assetId: 'asset-2', lockedProperties: ['tags'], tags: ['tag-1', 'tag-2'] },
+          lockedPropertiesBehavior: 'append',
+        }),
       );
       expect(mocks.asset.upsertExif).toHaveBeenCalledWith(
-        { assetId: 'asset-3', lockedProperties: ['tags'], tags: ['tag-1', 'tag-2'] },
-        { lockedPropertiesBehavior: 'append' },
+        expect.objectContaining({
+          exif: { assetId: 'asset-3', lockedProperties: ['tags'], tags: ['tag-1', 'tag-2'] },
+          lockedPropertiesBehavior: 'append',
+        }),
       );
       expect(mocks.tag.upsertAssetIds).toHaveBeenCalledWith([
         { tagId: 'tag-1', assetId: 'asset-1' },
@@ -255,12 +272,16 @@ describe(TagService.name, () => {
       ]);
 
       expect(mocks.asset.upsertExif).not.toHaveBeenCalledWith(
-        { assetId: 'asset-1', lockedProperties: ['tags'], tags: ['tag-1'] },
-        { lockedPropertiesBehavior: 'append' },
+        expect.objectContaining({
+          exif: { assetId: 'asset-1', lockedProperties: ['tags'], tags: ['tag-1'] },
+          lockedPropertiesBehavior: 'append',
+        }),
       );
       expect(mocks.asset.upsertExif).toHaveBeenCalledWith(
-        { assetId: 'asset-2', lockedProperties: ['tags'], tags: ['tag-1'] },
-        { lockedPropertiesBehavior: 'append' },
+        expect.objectContaining({
+          exif: { assetId: 'asset-2', lockedProperties: ['tags'], tags: ['tag-1'] },
+          lockedPropertiesBehavior: 'append',
+        }),
       );
       expect(mocks.tag.getAssetIds).toHaveBeenCalledWith('tag-1', ['asset-1', 'asset-2']);
       expect(mocks.tag.addAssetIds).toHaveBeenCalledWith('tag-1', ['asset-2']);

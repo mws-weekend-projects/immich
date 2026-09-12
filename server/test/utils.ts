@@ -1,12 +1,14 @@
+/* eslint-disable unicorn/no-this-outside-of-class */
 import { createPostgres, DatabaseConnectionParams } from '@immich/sql-tools';
-import { CallHandler, ExecutionContext, Provider, ValidationPipe } from '@nestjs/common';
-import { APP_GUARD, APP_PIPE } from '@nestjs/core';
+import { CallHandler, ExecutionContext, Provider } from '@nestjs/common';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { transformException } from '@nestjs/platform-express/multer/multer/multer.utils';
 import { Test } from '@nestjs/testing';
-import { ClassConstructor } from 'class-transformer';
 import { NextFunction } from 'express';
 import { Kysely } from 'kysely';
 import multer from 'multer';
+import { ClsService } from 'nestjs-cls';
+import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { Duplex, Readable, Writable } from 'node:stream';
 import { PNG } from 'pngjs';
@@ -14,6 +16,7 @@ import { UploadFieldName } from 'src/dtos/asset-media.dto';
 import { AssetUploadInterceptor } from 'src/middleware/asset-upload.interceptor';
 import { AuthGuard } from 'src/middleware/auth.guard';
 import { FileUploadInterceptor } from 'src/middleware/file-upload.interceptor';
+import { GlobalExceptionFilter } from 'src/middleware/global-exception.filter';
 import { AccessRepository } from 'src/repositories/access.repository';
 import { ActivityRepository } from 'src/repositories/activity.repository';
 import { AlbumUserRepository } from 'src/repositories/album-user.repository';
@@ -21,9 +24,10 @@ import { AlbumRepository } from 'src/repositories/album.repository';
 import { ApiKeyRepository } from 'src/repositories/api-key.repository';
 import { AppRepository } from 'src/repositories/app.repository';
 import { AssetEditRepository } from 'src/repositories/asset-edit.repository';
+import { AssetFileRepository } from 'src/repositories/asset-file.repository';
 import { AssetJobRepository } from 'src/repositories/asset-job.repository';
 import { AssetRepository } from 'src/repositories/asset.repository';
-import { AuditRepository } from 'src/repositories/audit.repository';
+import { ClusterGroupRepository } from 'src/repositories/cluster-group.repository';
 import { ConfigRepository } from 'src/repositories/config.repository';
 import { CronRepository } from 'src/repositories/cron.repository';
 import { CryptoRepository } from 'src/repositories/crypto.repository';
@@ -32,6 +36,7 @@ import { DownloadRepository } from 'src/repositories/download.repository';
 import { DuplicateRepository } from 'src/repositories/duplicate.repository';
 import { EmailRepository } from 'src/repositories/email.repository';
 import { EventRepository } from 'src/repositories/event.repository';
+import { IntegrityRepository } from 'src/repositories/integrity.repository';
 import { JobRepository } from 'src/repositories/job.repository';
 import { LibraryRepository } from 'src/repositories/library.repository';
 import { LoggingRepository } from 'src/repositories/logging.repository';
@@ -63,6 +68,7 @@ import { TelemetryRepository } from 'src/repositories/telemetry.repository';
 import { TrashRepository } from 'src/repositories/trash.repository';
 import { UserRepository } from 'src/repositories/user.repository';
 import { VersionHistoryRepository } from 'src/repositories/version-history.repository';
+import { VideoStreamRepository } from 'src/repositories/video-stream.repository';
 import { ViewRepository } from 'src/repositories/view-repository';
 import { WebsocketRepository } from 'src/repositories/websocket.repository';
 import { WorkflowRepository } from 'src/repositories/workflow.repository';
@@ -71,6 +77,7 @@ import { AuthService } from 'src/services/auth.service';
 import { BaseService } from 'src/services/base.service';
 import { RepositoryInterface } from 'src/types';
 import { getKyselyConfig } from 'src/utils/database';
+import { ClusterGroupFactory } from 'test/factories/cluster-group.factory';
 import { IAccessRepositoryMock, newAccessRepositoryMock } from 'test/repositories/access.repository.mock';
 import { newAssetRepositoryMock } from 'test/repositories/asset.repository.mock';
 import { newConfigRepositoryMock } from 'test/repositories/config.repository.mock';
@@ -85,12 +92,15 @@ import { assert, Mock, Mocked, vitest } from 'vitest';
 
 export type ControllerContext = {
   authenticate: Mock;
+  requireSetupAvailable: Mock;
   getHttpServer: () => any;
   reset: () => void;
   close: () => Promise<void>;
 };
 
-export const controllerSetup = async (controller: ClassConstructor<unknown>, providers: Provider[]) => {
+type ControllerClass = new (...args: any[]) => unknown;
+
+export const controllerSetup = async (controller: ControllerClass | ControllerClass[], providers: Provider[]) => {
   const noopInterceptor = { intercept: (ctx: never, next: CallHandler<unknown>) => next.handle() };
   const upload = multer({ storage: multer.memoryStorage() });
   const memoryFileInterceptor = {
@@ -104,6 +114,7 @@ export const controllerSetup = async (controller: ClassConstructor<unknown>, pro
       await new Promise<void>((resolve, reject) => {
         const next: NextFunction = (error) => (error ? reject(transformException(error)) : resolve());
         const maybePromise = handler(context.getRequest(), context.getResponse(), next);
+
         Promise.resolve(maybePromise).catch((error) => reject(error));
       });
 
@@ -111,12 +122,15 @@ export const controllerSetup = async (controller: ClassConstructor<unknown>, pro
     },
   };
   const moduleRef = await Test.createTestingModule({
-    controllers: [controller],
+    controllers: Array.isArray(controller) ? controller : [controller],
     providers: [
-      { provide: APP_PIPE, useValue: new ValidationPipe({ transform: true, whitelist: true }) },
+      { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+      { provide: APP_PIPE, useClass: ZodValidationPipe },
+      { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
       { provide: APP_GUARD, useClass: AuthGuard },
       { provide: LoggingRepository, useValue: LoggingRepository.create() },
-      { provide: AuthService, useValue: { authenticate: vi.fn() } },
+      { provide: ClsService, useValue: { getId: vi.fn() } },
+      { provide: AuthService, useValue: { authenticate: vi.fn(), requireSetupAvailable: vi.fn() } },
       ...providers,
     ],
   })
@@ -129,13 +143,17 @@ export const controllerSetup = async (controller: ClassConstructor<unknown>, pro
   await app.init();
 
   // allow the AuthController to override the AuthService itself
-  const authenticate = app.get<Mocked<AuthService>>(AuthService).authenticate as Mock;
+  const resolvedAuthService = app.get<Mocked<AuthService>>(AuthService);
+  const authenticate = resolvedAuthService.authenticate as Mock;
+  const requireSetupAvailable = resolvedAuthService.requireSetupAvailable as Mock;
 
   return {
     authenticate,
+    requireSetupAvailable,
     getHttpServer: () => app.getHttpServer(),
     reset: () => {
       authenticate.mockReset();
+      requireSetupAvailable.mockReset();
     },
     close: async () => {
       await app.close();
@@ -158,25 +176,31 @@ const mockFn = (label: string, { strict }: { strict: boolean }) => {
   });
 };
 
-export const mockBaseService = <T extends BaseService>(service: ClassConstructor<T>) => {
+export const mockBaseService = <T extends BaseService>(service: new (...args: any[]) => T) => {
   return automock(service, { args: [{ setContext: () => {} }], strict: false });
 };
 
 export const automock = <T>(
-  Dependency: ClassConstructor<T>,
+  Dependency: new (...args: any[]) => T,
   options?: {
-    args?: ConstructorParameters<ClassConstructor<T>>;
+    args?: ConstructorParameters<new (...args: any[]) => T>;
     strict?: boolean;
   },
 ): AutoMocked<T> => {
   const mock: Record<string, unknown> = {};
-  const strict = options?.strict ?? true;
+  const isStrict = options?.strict ?? true;
   const args = options?.args ?? [];
 
   const mocks: Mock[] = [];
 
   const instance = new Dependency(...args);
-  for (const property of Object.getOwnPropertyNames(Dependency.prototype)) {
+  const propertyNames = new Set(Object.getOwnPropertyNames(instance));
+  for (let proto = Dependency.prototype; proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    for (const property of Object.getOwnPropertyNames(proto)) {
+      propertyNames.add(property);
+    }
+  }
+  for (const property of propertyNames) {
     if (property === 'constructor') {
       continue;
     }
@@ -187,7 +211,7 @@ export const automock = <T>(
 
       const target = instance[property as keyof T];
       if (typeof target === 'function') {
-        const mockImplementation = mockFn(label, { strict });
+        const mockImplementation = mockFn(label, { strict: isStrict });
         mock[property] = mockImplementation;
         mocks.push(mockImplementation);
         continue;
@@ -214,10 +238,11 @@ export type ServiceOverrides = {
   albumUser: AlbumUserRepository;
   apiKey: ApiKeyRepository;
   app: AppRepository;
-  audit: AuditRepository;
   asset: AssetRepository;
   assetEdit: AssetEditRepository;
+  assetFile: AssetFileRepository;
   assetJob: AssetJobRepository;
+  clusterGroup: ClusterGroupRepository;
   config: ConfigRepository;
   cron: CronRepository;
   crypto: CryptoRepository;
@@ -226,6 +251,7 @@ export type ServiceOverrides = {
   duplicateRepository: DuplicateRepository;
   email: EmailRepository;
   event: EventRepository;
+  integrityReport: IntegrityRepository;
   job: JobRepository;
   library: LibraryRepository;
   logger: LoggingRepository;
@@ -257,6 +283,7 @@ export type ServiceOverrides = {
   trash: TrashRepository;
   user: UserRepository;
   versionHistory: VersionHistoryRepository;
+  videoStream: VideoStreamRepository;
   view: ViewRepository;
   websocket: WebsocketRepository;
   workflow: WorkflowRepository;
@@ -294,12 +321,13 @@ export const getMocks = () => {
     cron: automock(CronRepository, { args: [, loggerMock] }),
     crypto: newCryptoRepositoryMock(),
     activity: automock(ActivityRepository),
-    audit: automock(AuditRepository),
     album: automock(AlbumRepository, { strict: false }),
     albumUser: automock(AlbumUserRepository),
     asset: newAssetRepositoryMock(),
     assetEdit: automock(AssetEditRepository),
+    assetFile: automock(AssetFileRepository),
     assetJob: automock(AssetJobRepository),
+    clusterGroup: automock(ClusterGroupRepository),
     app: automock(AppRepository, { strict: false }),
     config: newConfigRepositoryMock(),
     database: databaseMock,
@@ -308,6 +336,7 @@ export const getMocks = () => {
     email: automock(EmailRepository, { args: [loggerMock] }),
     // eslint-disable-next-line no-sparse-arrays
     event: automock(EventRepository, { args: [, , loggerMock], strict: false }),
+    integrityReport: automock(IntegrityRepository, { strict: false }),
     job: newJobRepositoryMock(),
     apiKey: automock(ApiKeyRepository),
     library: automock(LibraryRepository, { strict: false }),
@@ -322,7 +351,7 @@ export const getMocks = () => {
     oauth: automock(OAuthRepository, { args: [loggerMock] }),
     partner: automock(PartnerRepository, { strict: false }),
     person: automock(PersonRepository, { strict: false }),
-    plugin: automock(PluginRepository, { strict: true }),
+    plugin: automock(PluginRepository, { strict: true, args: [databaseMock, loggerMock] }),
     process: automock(ProcessRepository),
     search: automock(SearchRepository, { strict: false }),
     // eslint-disable-next-line no-sparse-arrays
@@ -342,11 +371,15 @@ export const getMocks = () => {
     trash: automock(TrashRepository),
     user: automock(UserRepository, { strict: false }),
     versionHistory: automock(VersionHistoryRepository),
+    videoStream: automock(VideoStreamRepository, { strict: false }),
     view: automock(ViewRepository),
     // eslint-disable-next-line no-sparse-arrays
     websocket: automock(WebsocketRepository, { args: [, loggerMock], strict: false }),
     workflow: automock(WorkflowRepository, { strict: true }),
   };
+
+  // every new user gets a cluster group, which is incidental to most tests
+  mocks.clusterGroup.create.mockResolvedValue(ClusterGroupFactory.create());
 
   return mocks;
 };
@@ -367,8 +400,9 @@ export const newTestService = <T extends BaseService>(
     overrides.app || (mocks.app as As<AppRepository>),
     overrides.asset || (mocks.asset as As<AssetRepository>),
     overrides.assetEdit || (mocks.assetEdit as As<AssetEditRepository>),
+    overrides.assetFile || (mocks.assetFile as As<AssetFileRepository>),
     overrides.assetJob || (mocks.assetJob as As<AssetJobRepository>),
-    overrides.audit || (mocks.audit as As<AuditRepository>),
+    overrides.clusterGroup || (mocks.clusterGroup as As<ClusterGroupRepository>),
     overrides.config || (mocks.config as As<ConfigRepository> as ConfigRepository),
     overrides.cron || (mocks.cron as As<CronRepository>),
     overrides.crypto || (mocks.crypto as As<CryptoRepository>),
@@ -377,6 +411,7 @@ export const newTestService = <T extends BaseService>(
     overrides.duplicateRepository || (mocks.duplicateRepository as As<DuplicateRepository>),
     overrides.email || (mocks.email as As<EmailRepository>),
     overrides.event || (mocks.event as As<EventRepository>),
+    overrides.integrityReport || (mocks.integrityReport as As<IntegrityRepository>),
     overrides.job || (mocks.job as As<JobRepository>),
     overrides.library || (mocks.library as As<LibraryRepository>),
     overrides.machineLearning || (mocks.machineLearning as As<MachineLearningRepository>),
@@ -407,6 +442,7 @@ export const newTestService = <T extends BaseService>(
     overrides.trash || (mocks.trash as As<TrashRepository>),
     overrides.user || (mocks.user as As<UserRepository>),
     overrides.versionHistory || (mocks.versionHistory as As<VersionHistoryRepository>),
+    overrides.videoStream || (mocks.videoStream as As<VideoStreamRepository>),
     overrides.view || (mocks.view as As<ViewRepository>),
     overrides.websocket || (mocks.websocket as As<WebsocketRepository>),
     overrides.workflow || (mocks.workflow as As<WorkflowRepository>),
@@ -441,7 +477,7 @@ const pngFactory = newPngFactory();
 
 const templateName = 'mich';
 
-const withDatabase = (url: string, name: string) => url.replace(`/${templateName}`, `/${name}`);
+const withDatabase = (url: string, name: string) => url.replace(`/${templateName}`, () => `/${name}`);
 
 export const getKyselyDB = async (suffix?: string): Promise<Kysely<DB>> => {
   const testUrl = process.env.IMMICH_TEST_POSTGRES_URL!;
@@ -495,6 +531,7 @@ export const mockSpawn = vitest.fn((exitCode: number, stdout: string, stderr: st
         callback(exitCode);
       }
     }),
+    kill: vitest.fn(),
   } as unknown as ChildProcessWithoutNullStreams;
 });
 
@@ -518,10 +555,8 @@ export const mockDuplex =
       if (error) {
         duplex.destroy(error as Error);
       } else if (exitCode === 0) {
-        /* eslint-disable unicorn/prefer-single-call */
         duplex.push(stdout);
         duplex.push(null);
-        /* eslint-enable unicorn/prefer-single-call */
       } else {
         duplex.destroy(new Error(`${command} non-zero exit code (${exitCode})\n${stderr}`));
       }
@@ -530,44 +565,7 @@ export const mockDuplex =
     return duplex;
   };
 
-export const mockFork = vitest.fn((exitCode: number, stdout: string, stderr: string, error?: unknown) => {
-  const stdoutStream = new Readable({
-    read() {
-      this.push(stdout); // write mock data to stdout
-      this.push(null); // end stream
-    },
-  });
-
-  return {
-    stdout: stdoutStream,
-    stderr: new Readable({
-      read() {
-        this.push(stderr); // write mock data to stderr
-        this.push(null); // end stream
-      },
-    }),
-    stdin: new Writable({
-      write(chunk, encoding, callback) {
-        callback();
-      },
-    }),
-    exitCode,
-    on: vitest.fn((event, callback: any) => {
-      if (event === 'close') {
-        stdoutStream.once('end', () => callback(0));
-      }
-      if (event === 'error' && error) {
-        stdoutStream.once('end', () => callback(error));
-      }
-      if (event === 'exit') {
-        stdoutStream.once('end', () => callback(exitCode));
-      }
-    }),
-    kill: vitest.fn(),
-  } as unknown as ChildProcessWithoutNullStreams;
-});
-
-export async function* makeStream<T>(items: T[] = []): AsyncIterableIterator<T> {
+export async function* makeStream<T>(items: T[] = []): AsyncGenerator<T> {
   for (const item of items) {
     await Promise.resolve();
     yield item;

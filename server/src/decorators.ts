@@ -1,6 +1,6 @@
 import { BeforeUpdateTrigger, Column, ColumnOptions } from '@immich/sql-tools';
 import { SetMetadata, applyDecorators } from '@nestjs/common';
-import { ApiOperation, ApiOperationOptions, ApiProperty, ApiPropertyOptions, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiOperationOptions, ApiTags } from '@nestjs/swagger';
 import _ from 'lodash';
 import { ApiCustomExtension, ApiTag, ImmichWorker, JobName, MetadataKey, QueueName } from 'src/enum';
 import { EmitEvent } from 'src/repositories/event.repository';
@@ -54,9 +54,8 @@ function chunks<T>(collection: Array<T> | Set<T>, size: number): Array<Array<T>>
       result.push(chunk);
     }
     return result;
-  } else {
-    return _.chunk(collection, size);
   }
+  return _.chunk(collection, size);
 }
 
 /**
@@ -73,7 +72,8 @@ export function Chunked(
     const originalMethod = descriptor.value;
     const parameterIndex = options.paramIndex ?? 0;
     const chunkSize = options.chunkSize || DATABASE_PARAMETER_CHUNK_SIZE;
-    descriptor.value = async function (...arguments_: any[]) {
+    const mergeFn = options.mergeFn;
+    descriptor.value = function (...arguments_: any[]) {
       const argument = arguments_[parameterIndex];
 
       // Early return if argument length is less than or equal to the chunk size.
@@ -81,34 +81,38 @@ export function Chunked(
         (Array.isArray(argument) && argument.length <= chunkSize) ||
         (argument instanceof Set && argument.size <= chunkSize)
       ) {
-        return await originalMethod.apply(this, arguments_);
+        // eslint-disable-next-line unicorn/no-this-outside-of-class
+        return originalMethod.apply(this, arguments_);
       }
 
       return Promise.all(
-        chunks(argument, chunkSize).map(async (chunk) => {
-          return await Reflect.apply(originalMethod, this, [
+        chunks(argument, chunkSize).map((chunk) => {
+          // eslint-disable-next-line unicorn/no-this-outside-of-class
+          return Reflect.apply(originalMethod, this, [
             ...arguments_.slice(0, parameterIndex),
             chunk,
             ...arguments_.slice(parameterIndex + 1),
           ]);
         }),
-      ).then((results) => (options.mergeFn ? options.mergeFn(results) : results));
+      ).then((results) => (mergeFn ? mergeFn(results) : results));
     };
   };
 }
 
-export function ChunkedArray(options?: { paramIndex?: number }): MethodDecorator {
+export function ChunkedArray(options?: { paramIndex?: number; chunkSize?: number }): MethodDecorator {
   return Chunked({ ...options, mergeFn: _.flatten });
 }
 
-export function ChunkedSet(options?: { paramIndex?: number }): MethodDecorator {
+export function ChunkedSet(options?: { paramIndex?: number; chunkSize?: number }): MethodDecorator {
   return Chunked({ ...options, mergeFn: (args: Set<any>[]) => setUnion(...args) });
 }
 
 const UUID = '00000000-0000-4000-a000-000000000000';
+const UUID_1 = '00000000-0000-4000-a000-000000000001';
 
 export const DummyValue = {
   UUID,
+  UUID_1,
   UUID_SET: new Set([UUID]),
   PAGINATION: { take: 10, skip: 0 },
   EMAIL: 'user@immich.app',
@@ -137,7 +141,7 @@ export const GenerateSql = (...options: GenerateSqlQueries[]) => SetMetadata(GEN
 
 export type EventConfig = {
   name: EmitEvent;
-  /** handle socket.io server events as well  */
+  /** handle socket.io server events as well */
   server?: boolean;
   /** lower value has higher priority, defaults to 0 */
   priority?: number;
@@ -171,17 +175,6 @@ export const Endpoint = ({ history, ...options }: EndpointOptions) => {
   return applyDecorators(...decorators);
 };
 
-export type PropertyOptions = ApiPropertyOptions & { history?: HistoryBuilder };
-export const Property = ({ history, ...options }: PropertyOptions) => {
-  const extensions = history?.getExtensions() ?? {};
-
-  if (history?.isDeprecated()) {
-    options.deprecated = true;
-  }
-
-  return ApiProperty({ ...options, ...extensions });
-};
-
 type HistoryEntry = {
   version: string;
   state: ApiState | 'Added' | 'Updated';
@@ -200,15 +193,19 @@ type CustomExtensions = {
 };
 
 enum ApiState {
-  'Stable' = 'Stable',
-  'Alpha' = 'Alpha',
-  'Beta' = 'Beta',
-  'Internal' = 'Internal',
-  'Deprecated' = 'Deprecated',
+  Stable = 'Stable',
+  Alpha = 'Alpha',
+  Beta = 'Beta',
+  Internal = 'Internal',
+  Deprecated = 'Deprecated',
 }
 export class HistoryBuilder {
   private hasDeprecated = false;
   private items: HistoryEntry[] = [];
+
+  static v3() {
+    return new HistoryBuilder().added('v3.0.0');
+  }
 
   added(version: string, description?: string) {
     return this.push({ version, state: 'Added', description });
@@ -271,3 +268,13 @@ export class HistoryBuilder {
     return this;
   }
 }
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+export const extraModels: Function[] = [];
+
+export const ExtraModel = (): ClassDecorator => {
+  // eslint-disable-next-line unicorn/consistent-function-scoping, @typescript-eslint/no-unsafe-function-type
+  return (object: Function) => {
+    extraModels.push(object);
+  };
+};

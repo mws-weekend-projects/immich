@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:http/http.dart';
+import 'package:immich_mobile/data/server/api_repository.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
-import 'package:immich_mobile/infrastructure/repositories/api.repository.dart';
 import 'package:immich_mobile/infrastructure/utils/user.converter.dart';
 import 'package:openapi/api.dart';
 
@@ -12,7 +12,9 @@ class UserApiRepository extends ApiRepository {
 
   Future<UserDto?> getMyUser() async {
     final (adminDto, preferenceDto) = await (_api.getMyUser(), _api.getMyPreferences()).wait;
-    if (adminDto == null) return null;
+    if (adminDto == null) {
+      return null;
+    }
 
     return UserConverter.fromAdminDto(adminDto, preferenceDto);
   }

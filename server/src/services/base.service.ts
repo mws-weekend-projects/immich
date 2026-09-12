@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Insertable } from 'kysely';
 import sanitize from 'sanitize-filename';
-import { SystemConfig } from 'src/config';
 import { SALT_ROUNDS } from 'src/constants';
 import { StorageCore } from 'src/cores/storage.core';
 import { UserAdmin } from 'src/database';
+import { SystemConfig } from 'src/dtos/config.dto';
 import { AccessRepository } from 'src/repositories/access.repository';
 import { ActivityRepository } from 'src/repositories/activity.repository';
 import { AlbumUserRepository } from 'src/repositories/album-user.repository';
@@ -12,9 +12,10 @@ import { AlbumRepository } from 'src/repositories/album.repository';
 import { ApiKeyRepository } from 'src/repositories/api-key.repository';
 import { AppRepository } from 'src/repositories/app.repository';
 import { AssetEditRepository } from 'src/repositories/asset-edit.repository';
+import { AssetFileRepository } from 'src/repositories/asset-file.repository';
 import { AssetJobRepository } from 'src/repositories/asset-job.repository';
 import { AssetRepository } from 'src/repositories/asset.repository';
-import { AuditRepository } from 'src/repositories/audit.repository';
+import { ClusterGroupRepository } from 'src/repositories/cluster-group.repository';
 import { ConfigRepository } from 'src/repositories/config.repository';
 import { CronRepository } from 'src/repositories/cron.repository';
 import { CryptoRepository } from 'src/repositories/crypto.repository';
@@ -23,6 +24,7 @@ import { DownloadRepository } from 'src/repositories/download.repository';
 import { DuplicateRepository } from 'src/repositories/duplicate.repository';
 import { EmailRepository } from 'src/repositories/email.repository';
 import { EventRepository } from 'src/repositories/event.repository';
+import { IntegrityRepository } from 'src/repositories/integrity.repository';
 import { JobRepository } from 'src/repositories/job.repository';
 import { LibraryRepository } from 'src/repositories/library.repository';
 import { LoggingRepository } from 'src/repositories/logging.repository';
@@ -54,10 +56,12 @@ import { TelemetryRepository } from 'src/repositories/telemetry.repository';
 import { TrashRepository } from 'src/repositories/trash.repository';
 import { UserRepository } from 'src/repositories/user.repository';
 import { VersionHistoryRepository } from 'src/repositories/version-history.repository';
+import { VideoStreamRepository } from 'src/repositories/video-stream.repository';
 import { ViewRepository } from 'src/repositories/view-repository';
 import { WebsocketRepository } from 'src/repositories/websocket.repository';
 import { WorkflowRepository } from 'src/repositories/workflow.repository';
 import { UserTable } from 'src/schema/tables/user.table';
+import { ClassConstructor } from 'src/types';
 import { AccessRequest, checkAccess, requireAccess } from 'src/utils/access';
 import { getConfig, updateConfig } from 'src/utils/config';
 
@@ -71,8 +75,9 @@ export const BASE_SERVICE_DEPENDENCIES = [
   AppRepository,
   AssetRepository,
   AssetEditRepository,
+  AssetFileRepository,
   AssetJobRepository,
-  AuditRepository,
+  ClusterGroupRepository,
   ConfigRepository,
   CronRepository,
   CryptoRepository,
@@ -81,6 +86,7 @@ export const BASE_SERVICE_DEPENDENCIES = [
   DuplicateRepository,
   EmailRepository,
   EventRepository,
+  IntegrityRepository,
   JobRepository,
   LibraryRepository,
   MachineLearningRepository,
@@ -111,10 +117,11 @@ export const BASE_SERVICE_DEPENDENCIES = [
   TrashRepository,
   UserRepository,
   VersionHistoryRepository,
+  VideoStreamRepository,
   ViewRepository,
   WebsocketRepository,
   WorkflowRepository,
-];
+] as const;
 
 @Injectable()
 export class BaseService {
@@ -130,8 +137,9 @@ export class BaseService {
     protected appRepository: AppRepository,
     protected assetRepository: AssetRepository,
     protected assetEditRepository: AssetEditRepository,
+    protected assetFileRepository: AssetFileRepository,
     protected assetJobRepository: AssetJobRepository,
-    protected auditRepository: AuditRepository,
+    protected clusterGroupRepository: ClusterGroupRepository,
     protected configRepository: ConfigRepository,
     protected cronRepository: CronRepository,
     protected cryptoRepository: CryptoRepository,
@@ -140,6 +148,7 @@ export class BaseService {
     protected duplicateRepository: DuplicateRepository,
     protected emailRepository: EmailRepository,
     protected eventRepository: EventRepository,
+    protected integrityRepository: IntegrityRepository,
     protected jobRepository: JobRepository,
     protected libraryRepository: LibraryRepository,
     protected machineLearningRepository: MachineLearningRepository,
@@ -170,6 +179,7 @@ export class BaseService {
     protected trashRepository: TrashRepository,
     protected userRepository: UserRepository,
     protected versionRepository: VersionHistoryRepository,
+    protected videoStreamRepository: VideoStreamRepository,
     protected viewRepository: ViewRepository,
     protected websocketRepository: WebsocketRepository,
     protected workflowRepository: WorkflowRepository,
@@ -185,6 +195,70 @@ export class BaseService {
       systemMetadataRepository,
       this.logger,
     );
+  }
+
+  static create<T extends ClassConstructor<typeof BaseService>>(Service: T, ctx: BaseService) {
+    const service = new Service(
+      LoggingRepository.create(),
+      ctx.accessRepository,
+      ctx.activityRepository,
+      ctx.albumRepository,
+      ctx.albumUserRepository,
+      ctx.apiKeyRepository,
+      ctx.appRepository,
+      ctx.assetRepository,
+      ctx.assetEditRepository,
+      ctx.assetFileRepository,
+      ctx.assetJobRepository,
+      ctx.clusterGroupRepository,
+      ctx.configRepository,
+      ctx.cronRepository,
+      ctx.cryptoRepository,
+      ctx.databaseRepository,
+      ctx.downloadRepository,
+      ctx.duplicateRepository,
+      ctx.emailRepository,
+      ctx.eventRepository,
+      ctx.integrityRepository,
+      ctx.jobRepository,
+      ctx.libraryRepository,
+      ctx.machineLearningRepository,
+      ctx.mapRepository,
+      ctx.mediaRepository,
+      ctx.memoryRepository,
+      ctx.metadataRepository,
+      ctx.moveRepository,
+      ctx.notificationRepository,
+      ctx.oauthRepository,
+      ctx.ocrRepository,
+      ctx.partnerRepository,
+      ctx.personRepository,
+      ctx.pluginRepository,
+      ctx.processRepository,
+      ctx.searchRepository,
+      ctx.serverInfoRepository,
+      ctx.sessionRepository,
+      ctx.sharedLinkRepository,
+      ctx.sharedLinkAssetRepository,
+      ctx.stackRepository,
+      ctx.storageRepository,
+      ctx.syncRepository,
+      ctx.syncCheckpointRepository,
+      ctx.systemMetadataRepository,
+      ctx.tagRepository,
+      ctx.telemetryRepository,
+      ctx.trashRepository,
+      ctx.userRepository,
+      ctx.versionRepository,
+      ctx.videoStreamRepository,
+      ctx.viewRepository,
+      ctx.websocketRepository,
+      ctx.workflowRepository,
+    );
+
+    service.logger.setContext(BaseService.name);
+
+    return service as InstanceType<T>;
   }
 
   get worker() {
@@ -215,10 +289,22 @@ export class BaseService {
     return checkAccess(this.accessRepository, request);
   }
 
-  async createUser(dto: Insertable<UserTable> & { email: string }): Promise<UserAdmin> {
+  async isSetupAvailable(): Promise<boolean> {
+    const { setup } = this.configRepository.getEnv();
+    return setup.allow && !(await this.userRepository.hasAdmin());
+  }
+
+  async requireSetupAvailable(): Promise<void> {
+    if (!(await this.isSetupAvailable())) {
+      throw new BadRequestException('Admin setup is not available');
+    }
+  }
+
+  async createUser(dto: Omit<Insertable<UserTable>, 'clusterGroupId'> & { email: string }): Promise<UserAdmin> {
     const exists = await this.userRepository.getByEmail(dto.email);
     if (exists) {
-      throw new BadRequestException('User exists');
+      this.logger.debug('User creation rejected: user already exists');
+      throw new BadRequestException('Email is not available');
     }
 
     if (!dto.isAdmin) {
@@ -228,7 +314,7 @@ export class BaseService {
       }
     }
 
-    const payload: Insertable<UserTable> = { ...dto };
+    const payload: Omit<Insertable<UserTable>, 'clusterGroupId'> = { ...dto };
     if (payload.password) {
       payload.password = await this.cryptoRepository.hashBcrypt(payload.password, SALT_ROUNDS);
     }
@@ -236,7 +322,8 @@ export class BaseService {
       payload.storageLabel = sanitize(payload.storageLabel.replaceAll('.', ''));
     }
 
-    const user = await this.userRepository.create(payload);
+    const clusterGroup = await this.clusterGroupRepository.create();
+    const user = await this.userRepository.create({ ...payload, clusterGroupId: clusterGroup.id });
 
     await this.eventRepository.emit('UserCreate', user);
 

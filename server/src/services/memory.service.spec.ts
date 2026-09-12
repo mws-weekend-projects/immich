@@ -28,25 +28,29 @@ describe(MemoryService.name, () => {
   });
 
   describe('search', () => {
-    it('should search memories', async () => {
+    it('should search memories with assets', async () => {
       const [userId] = newUuids();
+
       const asset = AssetFactory.create();
       const memory1 = MemoryFactory.from({ ownerId: userId }).asset(asset).build();
       const memory2 = MemoryFactory.create({ ownerId: userId });
-
       mocks.memory.search.mockResolvedValue([getForMemory(memory1), getForMemory(memory2)]);
+      mocks.memory.statistics.mockResolvedValue({ total: 2 });
 
       await expect(sut.search(factory.auth({ user: { id: userId } }), {})).resolves.toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ id: memory1.id, assets: [expect.objectContaining({ id: asset.id })] }),
-          expect.objectContaining({ id: memory2.id, assets: [] }),
+          expect.objectContaining({
+            id: memory1.id,
+            assets: expect.arrayContaining([expect.objectContaining({ id: asset.id })]),
+          }),
         ]),
       );
+      mocks.memory.search.mockResolvedValue([]);
+      await expect(sut.search(factory.auth(), {})).resolves.toEqual([]);
     });
 
-    it('should map ', async () => {
+    it('should map empty result', async () => {
       mocks.memory.search.mockResolvedValue([]);
-
       await expect(sut.search(factory.auth(), {})).resolves.toEqual([]);
     });
   });

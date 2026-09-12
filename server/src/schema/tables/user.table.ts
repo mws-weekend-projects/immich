@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   DeleteDateColumn,
+  ForeignKeyColumn,
   Generated,
   Index,
   PrimaryGeneratedColumn,
@@ -14,6 +15,7 @@ import { ColumnType } from 'kysely';
 import { UpdatedAtTrigger, UpdateIdColumn } from 'src/decorators';
 import { UserAvatarColor, UserStatus } from 'src/enum';
 import { user_delete_audit } from 'src/schema/functions';
+import { ClusterGroupTable } from 'src/schema/tables/cluster-group.table';
 
 @Table('user')
 @UpdatedAtTrigger('user_updatedAt')
@@ -31,8 +33,8 @@ export class UserTable {
   @Column({ unique: true })
   email!: string;
 
-  @Column({ default: '' })
-  password!: Generated<string>;
+  @Column({ nullable: true, default: null })
+  password!: string | null;
 
   @Column({ nullable: true })
   pinCode!: string | null;
@@ -64,8 +66,9 @@ export class UserTable {
   @Column({ unique: true, nullable: true, default: null })
   storageLabel!: string | null;
 
+  // TODO remove default, make nullable, and convert empty spaces to null
   @Column({ default: '' })
-  name!: Generated<string>;
+  name!: string;
 
   @Column({ type: 'bigint', nullable: true })
   quotaSizeInBytes!: ColumnType<number> | null;
@@ -81,4 +84,7 @@ export class UserTable {
 
   @UpdateIdColumn({ index: true })
   updateId!: Generated<string>;
+
+  @ForeignKeyColumn(() => ClusterGroupTable, { onUpdate: 'CASCADE', nullable: false })
+  clusterGroupId!: string;
 }

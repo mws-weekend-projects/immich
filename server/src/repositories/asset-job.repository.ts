@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Kysely, sql } from 'kysely';
-import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database';
 import { DummyValue, GenerateSql } from 'src/decorators';
@@ -9,6 +9,7 @@ import { DB } from 'src/schema';
 import {
   anyUuid,
   asUuid,
+  withAudioStream,
   withDefaultVisibility,
   withEdits,
   withExif,
@@ -16,6 +17,8 @@ import {
   withFaces,
   withFilePath,
   withFiles,
+  withVideoFormat,
+  withVideoStream,
 } from 'src/utils/database';
 import { mimeTypes } from 'src/utils/mime-types';
 
@@ -134,6 +137,9 @@ export class AssetJobRepository {
       )
       .select(withEdits)
       .$call(withExifInner)
+      .leftJoin('asset_video', 'asset_video.assetId', 'asset.id')
+      .select((eb) => withVideoStream(eb).as('videoStream'))
+      .select((eb) => withVideoFormat(eb).as('format'))
       .where('asset.id', '=', id)
       .executeTakeFirst();
   }
@@ -145,6 +151,8 @@ export class AssetJobRepository {
       .select(columns.asset)
       .select(withFaces)
       .select((eb) => withFiles(eb, AssetFileType.Sidecar))
+      .innerJoin('user', 'user.id', 'asset.ownerId')
+      .select(['user.clusterGroupId'])
       .where('asset.id', '=', id)
       .executeTakeFirst();
   }
@@ -228,7 +236,17 @@ export class AssetJobRepository {
       .select(['asset.id', 'asset.visibility'])
       .$call(withExifInner)
       .select((eb) => withFaces(eb, true, true))
-      .select((eb) => withFiles(eb, AssetFileType.Preview))
+      .select((eb) =>
+        jsonObjectFrom(
+          eb
+            .selectFrom('asset_file')
+            .select(columns.assetFiles)
+            .whereRef('asset_file.assetId', '=', 'asset.id')
+            .where('asset_file.type', '=', sql.lit(AssetFileType.Preview))
+            .orderBy('asset_file.isEdited', 'desc')
+            .limit(sql.lit(1)),
+        ).as('previewFile'),
+      )
       .where('asset.id', '=', id)
       .executeTakeFirst();
   }
@@ -311,19 +329,17 @@ export class AssetJobRepository {
       .select(['asset.id'])
       .where('asset.type', '=', sql.lit(AssetType.Video))
       .$if(!force, (qb) =>
-        qb
-          .where((eb) =>
-            eb.not(
-              eb.exists(
-                eb
-                  .selectFrom('asset_file')
-                  .select('asset_file.id')
-                  .whereRef('asset_file.assetId', '=', 'asset.id')
-                  .where('asset_file.type', '=', sql.lit(AssetFileType.EncodedVideo)),
-              ),
+        qb.where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('asset_file')
+                .select('asset_file.id')
+                .whereRef('asset_file.assetId', '=', 'asset.id')
+                .where('asset_file.type', '=', sql.lit(AssetFileType.EncodedVideo)),
             ),
-          )
-          .where('asset.visibility', '!=', sql.lit(AssetVisibility.Hidden)),
+          ),
+        ),
       )
       .where('asset.deletedAt', 'is', null)
       .stream();
@@ -333,8 +349,14 @@ export class AssetJobRepository {
   getForVideoConversion(id: string) {
     return this.db
       .selectFrom('asset')
+      .innerJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
+      .innerJoin('asset_video', 'asset_video.assetId', 'asset.id')
+      .leftJoin('asset_audio', 'asset_audio.assetId', 'asset.id')
       .select(['asset.id', 'asset.ownerId', 'asset.originalPath'])
       .select(withFiles)
+      .select((eb) => withAudioStream(eb).as('audioStream'))
+      .select((eb) => withVideoStream(eb).$notNull().as('videoStream'))
+      .select((eb) => withVideoFormat(eb).$notNull().as('format'))
       .where('asset.id', '=', id)
       .where('asset.type', '=', sql.lit(AssetType.Video))
       .executeTakeFirst();

@@ -42,6 +42,17 @@ select
           "memory_asset"."memoriesId" = "memory"."id"
           and "asset"."visibility" = 'timeline'
           and "asset"."deletedAt" is null
+          and not exists (
+            select
+              $1 as "one"
+            from
+              "asset_face"
+              inner join "person" on "person"."personGroupId" = "asset_face"."personGroupId"
+              and "person"."ownerId" = "asset"."ownerId"
+            where
+              "asset_face"."assetId" = "asset"."id"
+              and "person"."isHidden" = $2
+          )
         order by
           "asset"."fileCreatedAt" asc
       ) as agg
@@ -51,8 +62,9 @@ from
   "memory"
 where
   "deletedAt" is null
-  and "ownerId" = $1
+  and "ownerId" = $3
 order by
+  "showAt" desc nulls last,
   "memoryAt" desc
 
 -- MemoryRepository.search (date filter)
@@ -71,6 +83,17 @@ select
           "memory_asset"."memoriesId" = "memory"."id"
           and "asset"."visibility" = 'timeline'
           and "asset"."deletedAt" is null
+          and not exists (
+            select
+              $1 as "one"
+            from
+              "asset_face"
+              inner join "person" on "person"."personGroupId" = "asset_face"."personGroupId"
+              and "person"."ownerId" = "asset"."ownerId"
+            where
+              "asset_face"."assetId" = "asset"."id"
+              and "person"."isHidden" = $2
+          )
         order by
           "asset"."fileCreatedAt" asc
       ) as agg
@@ -81,15 +104,103 @@ from
 where
   (
     "showAt" is null
-    or "showAt" <= $1
+    or "showAt" <= $3
   )
   and (
     "hideAt" is null
-    or "hideAt" >= $2
+    or "hideAt" >= $4
   )
   and "deletedAt" is null
-  and "ownerId" = $3
+  and "ownerId" = $5
 order by
+  "showAt" desc nulls last,
+  "memoryAt" desc
+
+-- MemoryRepository.search (upcoming filter)
+select
+  (
+    select
+      coalesce(json_agg(agg), '[]')
+    from
+      (
+        select
+          "asset".*
+        from
+          "asset"
+          inner join "memory_asset" on "asset"."id" = "memory_asset"."assetId"
+        where
+          "memory_asset"."memoriesId" = "memory"."id"
+          and "asset"."visibility" = 'timeline'
+          and "asset"."deletedAt" is null
+          and not exists (
+            select
+              $1 as "one"
+            from
+              "asset_face"
+              inner join "person" on "person"."personGroupId" = "asset_face"."personGroupId"
+              and "person"."ownerId" = "asset"."ownerId"
+            where
+              "asset_face"."assetId" = "asset"."id"
+              and "person"."isHidden" = $2
+          )
+        order by
+          "asset"."fileCreatedAt" asc
+      ) as agg
+  ) as "assets",
+  "memory".*
+from
+  "memory"
+where
+  "showAt" > $3
+  and "deletedAt" is null
+  and "ownerId" = $4
+order by
+  "showAt" desc nulls last,
+  "memoryAt" desc
+
+-- MemoryRepository.search (not upcoming filter)
+select
+  (
+    select
+      coalesce(json_agg(agg), '[]')
+    from
+      (
+        select
+          "asset".*
+        from
+          "asset"
+          inner join "memory_asset" on "asset"."id" = "memory_asset"."assetId"
+        where
+          "memory_asset"."memoriesId" = "memory"."id"
+          and "asset"."visibility" = 'timeline'
+          and "asset"."deletedAt" is null
+          and not exists (
+            select
+              $1 as "one"
+            from
+              "asset_face"
+              inner join "person" on "person"."personGroupId" = "asset_face"."personGroupId"
+              and "person"."ownerId" = "asset"."ownerId"
+            where
+              "asset_face"."assetId" = "asset"."id"
+              and "person"."isHidden" = $2
+          )
+        order by
+          "asset"."fileCreatedAt" asc
+      ) as agg
+  ) as "assets",
+  "memory".*
+from
+  "memory"
+where
+  (
+    "showAt" is null
+    or "showAt" <= $3
+  )
+  and "deletedAt" is null
+  and "ownerId" = $4
+order by
+  "showAt" desc nulls last,
   "memoryAt" desc
 
 -- MemoryRepository.get

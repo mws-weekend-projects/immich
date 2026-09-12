@@ -12,7 +12,7 @@ import {
   MaintenanceStatusResponseDto,
   SetMaintenanceModeDto,
 } from 'src/dtos/maintenance.dto';
-import { ServerConfigDto, ServerVersionResponseDto } from 'src/dtos/server.dto';
+import { ServerConfigDto, ServerPingResponse, ServerVersionResponseDto } from 'src/dtos/server.dto';
 import { DatabaseLock, ImmichCookie, MaintenanceAction, SystemMetadataKey } from 'src/enum';
 import { MaintenanceHealthRepository } from 'src/maintenance/maintenance-health.repository';
 import { MaintenanceWebsocketRepository } from 'src/maintenance/maintenance-websocket.repository';
@@ -121,6 +121,10 @@ export class MaintenanceWorkerService {
     return ServerVersionResponseDto.fromSemVer(serverVersion);
   }
 
+  ping(): ServerPingResponse {
+    return { res: 'pong' };
+  }
+
   /**
    * {@link _ApiService.ssr}
    */
@@ -167,8 +171,8 @@ export class MaintenanceWorkerService {
     const candidates = ['/data', '/usr/src/app/upload'];
 
     for (const candidate of candidates) {
-      const exists = this.storageRepository.existsSync(candidate);
-      if (exists) {
+      const isExists = this.storageRepository.existsSync(candidate);
+      if (isExists) {
         targets.push(candidate);
       }
     }
@@ -277,19 +281,22 @@ export class MaintenanceWorkerService {
 
   async runAction(action: SetMaintenanceModeDto) {
     switch (action.action) {
-      case MaintenanceAction.Start: {
+      case MaintenanceAction.Start:
+      case MaintenanceAction.SelectDatabaseRestore: {
         return;
       }
       case MaintenanceAction.End: {
         return this.endMaintenance();
       }
-      case MaintenanceAction.SelectDatabaseRestore: {
-        return;
+      case MaintenanceAction.RestoreDatabase: {
+        return this.runRestoreDatabase(action);
       }
     }
+  }
 
-    const lock = await this.databaseRepository.tryLock(DatabaseLock.MaintenanceOperation);
-    if (!lock) {
+  async runRestoreDatabase(action: SetMaintenanceModeDto) {
+    const isLock = await this.databaseRepository.tryLock(DatabaseLock.MaintenanceOperation);
+    if (!isLock) {
       return;
     }
 

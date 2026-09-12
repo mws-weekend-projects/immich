@@ -1,33 +1,43 @@
 import { ShallowDehydrateObject } from 'kysely';
-import { SystemConfig } from 'src/config';
 import { VECTOR_EXTENSIONS } from 'src/constants';
-import { Asset, AssetFile } from 'src/database';
+import { AssetFile } from 'src/database';
 import { UploadFieldName } from 'src/dtos/asset-media.dto';
 import { AuthDto } from 'src/dtos/auth.dto';
+import { SystemConfig } from 'src/dtos/config.dto';
 import { AssetEditActionItem } from 'src/dtos/editing.dto';
 import { SetMaintenanceModeDto } from 'src/dtos/maintenance.dto';
 import {
+  AacProfile,
   AssetOrder,
   AssetType,
+  Av1Profile,
+  ColorMatrix,
+  ColorPrimaries,
+  ColorTransfer,
+  DvProfile,
+  DvSignalCompatibility,
   ExifOrientation,
+  H264Profile,
+  HevcProfile,
   ImageFormat,
+  IntegrityReport,
   JobName,
   MemoryType,
-  PluginTriggerType,
   QueueName,
   StorageFolder,
   SyncEntityType,
   SystemMetadataKey,
   TranscodeTarget,
   UserMetadataKey,
-  VideoCodec,
 } from 'src/enum';
+import { Mocked } from 'vitest';
 
-export type DeepPartial<T> =
-  T extends Record<string, unknown>
-    ? { [K in keyof T]?: DeepPartial<T[K]> }
-    : T extends Array<infer R>
-      ? DeepPartial<R>[]
+export type DeepPartial<T> = T extends Date
+  ? T
+  : T extends Array<infer R>
+    ? DeepPartial<R>[]
+    : T extends object
+      ? { [K in keyof T]?: DeepPartial<T[K]> }
       : T;
 
 export type RepositoryInterface<T extends object> = Pick<T, keyof T>;
@@ -65,40 +75,50 @@ export interface DecodeToBufferOptions extends DecodeImageOptions {
 }
 
 export type GenerateThumbnailOptions = Pick<ImageOptions, 'format' | 'quality' | 'progressive'> & DecodeToBufferOptions;
-
-export type GenerateThumbnailFromBufferOptions = GenerateThumbnailOptions & { raw: RawImageInfo };
-
 export type GenerateThumbhashOptions = DecodeImageOptions;
-
-export type GenerateThumbhashFromBufferOptions = GenerateThumbhashOptions & { raw: RawImageInfo };
-
-export interface GenerateThumbnailsOptions {
-  colorspace: string;
-  preview?: ImageOptions;
-  processInvalidImages: boolean;
-  thumbhash?: boolean;
-  thumbnail?: ImageOptions;
-}
 
 export interface VideoStreamInfo {
   index: number;
   height: number;
   width: number;
   rotation: number;
-  codecName?: string;
+  codecName: string | null;
+  profile: H264Profile | HevcProfile | Av1Profile | null;
+  level: number | null;
   frameCount: number;
-  isHDR: boolean;
+  frameRate: number | null;
+  timeBase: number | null;
   bitrate: number;
   pixelFormat: string;
-  colorPrimaries?: string;
-  colorSpace?: string;
-  colorTransfer?: string;
+  colorPrimaries: ColorPrimaries;
+  colorMatrix: ColorMatrix;
+  colorTransfer: ColorTransfer;
+  dvProfile: DvProfile | null;
+  dvLevel: number | null;
+  dvBlSignalCompatibilityId: DvSignalCompatibility | null;
 }
 
 export interface AudioStreamInfo {
   index: number;
-  codecName?: string;
+  codecName: string | null;
+  profile: AacProfile | null;
   bitrate: number;
+}
+
+/** Packet-derived video data needed for accurate HLS playlists. */
+export interface VideoPacketInfo {
+  /** Sum of source packet duration across all packets (includes discard). */
+  totalDuration: number;
+  /** Post-discard packet count. */
+  packetCount: number;
+  /** Output CFR frame count at `packetCount / format.duration`. */
+  outputFrames: number;
+  /** All keyframe PTS in source ticks, including pre-roll discard keyframes. */
+  keyframePts: number[];
+  /** Cumulative packet duration through each keyframe, inclusive. */
+  keyframeAccDuration: number[];
+  /** Each keyframe's own packet duration (needed for VFR). */
+  keyframeOwnDuration: number[];
 }
 
 export interface VideoFormat {
@@ -111,10 +131,6 @@ export interface VideoFormat {
 export interface ImageDimensions {
   width: number;
   height: number;
-}
-
-export interface InputDimensions extends ImageDimensions {
-  inputPath: string;
 }
 
 export interface VideoInfo {
@@ -133,6 +149,25 @@ export interface TranscodeCommand {
   };
 }
 
+export interface VideoTuning {
+  strictGop: boolean;
+  lowLatency: boolean;
+}
+
+export interface HlsCommandOptions {
+  initFilename: string;
+  inputPath: string;
+  packetCount: number;
+  playlistFilename: string;
+  seekSeconds?: number;
+  segmentDuration: number;
+  segmentFilename: string;
+  startSegment: number;
+  target: TranscodeTarget;
+  timeBase: number;
+  totalDuration: number;
+}
+
 export interface BitrateDistribution {
   max: number;
   target: number;
@@ -140,22 +175,14 @@ export interface BitrateDistribution {
   unit: string;
 }
 
-export interface ImageBuffer {
-  data: Buffer;
-  info: RawImageInfo;
-}
-
 export interface VideoCodecSWConfig {
   getCommand(
     target: TranscodeTarget,
-    videoStream: VideoStreamInfo,
-    audioStream: AudioStreamInfo,
+    video: VideoStreamInfo,
+    audio?: AudioStreamInfo,
     format?: VideoFormat,
   ): TranscodeCommand;
-}
-
-export interface VideoCodecHWConfig extends VideoCodecSWConfig {
-  getSupportedCodecs(): Array<VideoCodec>;
+  getHlsCommand(options: HlsCommandOptions, video: VideoStreamInfo, audio?: AudioStreamInfo): string[];
 }
 
 export interface ProbeOptions {
@@ -188,6 +215,11 @@ export interface IDelayedJob extends IBaseJob {
 }
 
 export type JobSource = 'upload' | 'sidecar-write' | 'copy' | 'edit';
+export interface IPersonJob {
+  ownerId: string;
+  personGroupId: string;
+}
+
 export interface IEntityJob extends IBaseJob {
   id: string;
   source?: JobSource;
@@ -214,16 +246,8 @@ export interface ILibraryBulkIdsJob {
   totalAssets: number;
 }
 
-export interface IBulkEntityJob {
-  ids: string[];
-}
-
 export interface IDeleteFilesJob extends IBaseJob {
   files: Array<string | null | undefined>;
-}
-
-export interface ISidecarWriteJob extends IEntityJob {
-  tags?: true;
 }
 
 export interface IDeferrableJob extends IEntityJob {
@@ -254,27 +278,51 @@ export interface INotifySignupJob extends IEntityJob {
 
 export interface INotifyAlbumInviteJob extends IEntityJob {
   recipientId: string;
+  senderName: string;
 }
 
 export interface INotifyAlbumUpdateJob extends IEntityJob, IDelayedJob {
   recipientId: string;
 }
 
-export interface WorkflowData {
-  [PluginTriggerType.AssetCreate]: {
-    userId: string;
-    asset: Asset;
-  };
-  [PluginTriggerType.PersonRecognized]: {
-    personId: string;
-    assetId: string;
-  };
+export interface IIntegrityJob {
+  refreshOnly?: boolean;
 }
 
-export interface IWorkflowJob<T extends PluginTriggerType = PluginTriggerType> {
-  id: string;
-  type: T;
-  event: WorkflowData[T];
+export interface IIntegrityDeleteReportTypeJob {
+  type?: IntegrityReport;
+}
+
+export interface IIntegrityDeleteReportsJob {
+  reports: {
+    id: string;
+    assetId: string | null;
+    fileAssetId: string | null;
+    path: string;
+  }[];
+}
+
+export interface IIntegrityUntrackedFilesJob {
+  type: 'asset' | 'asset_file';
+  paths: string[];
+}
+
+export interface IIntegrityMissingFilesJob {
+  items: ({ path: string; reportId: string | null } & (
+    { assetId: string; fileAssetId: null } | { assetId: null; fileAssetId: string }
+  ))[];
+}
+
+export interface IIntegrityPathWithReportJob {
+  items: { path: string; reportId: string | null }[];
+}
+
+export interface IIntegrityPathWithChecksumJob {
+  items: { path: string; reportId: string | null; checksum?: string | null }[];
+}
+
+export interface IFacialRecognitionQueueAll extends INightlyJob {
+  clusterGroupId?: string;
 }
 
 export interface JobCounts {
@@ -313,7 +361,7 @@ export type JobItem =
   // Migration
   | { name: JobName.FileMigrationQueueAll; data?: IBaseJob }
   | { name: JobName.AssetFileMigration; data: IEntityJob }
-  | { name: JobName.PersonFileMigration; data: IEntityJob }
+  | { name: JobName.PersonFileMigration; data: IPersonJob }
 
   // Metadata Extraction
   | { name: JobName.AssetExtractMetadataQueueAll; data: IBaseJob }
@@ -330,9 +378,9 @@ export type JobItem =
   // Facial Recognition
   | { name: JobName.AssetDetectFacesQueueAll; data: IBaseJob }
   | { name: JobName.AssetDetectFaces; data: IEntityJob }
-  | { name: JobName.FacialRecognitionQueueAll; data: INightlyJob }
+  | { name: JobName.FacialRecognitionQueueAll; data: IFacialRecognitionQueueAll }
   | { name: JobName.FacialRecognition; data: IDeferrableJob }
-  | { name: JobName.PersonGenerateThumbnail; data: IEntityJob }
+  | { name: JobName.PersonGenerateThumbnail; data: IPersonJob }
 
   // Smart Search
   | { name: JobName.SmartSearchQueueAll; data: IBaseJob }
@@ -351,8 +399,8 @@ export type JobItem =
   | { name: JobName.FileDelete; data: IDeleteFilesJob }
 
   // Cleanup
-  | { name: JobName.AuditLogCleanup; data?: IBaseJob }
   | { name: JobName.SessionCleanup; data?: IBaseJob }
+  | { name: JobName.HlsSessionCleanup; data?: IBaseJob }
 
   // Tags
   | { name: JobName.TagCleanup; data?: IBaseJob }
@@ -386,7 +434,19 @@ export type JobItem =
   | { name: JobName.Ocr; data: IEntityJob }
 
   // Workflow
-  | { name: JobName.WorkflowRun; data: IWorkflowJob }
+  | { name: JobName.WorkflowAssetTrigger; data: { workflowId: string; assetId: string } }
+
+  // Integrity
+  | { name: JobName.IntegrityUntrackedFilesQueueAll; data?: IIntegrityJob }
+  | { name: JobName.IntegrityUntrackedFiles; data: IIntegrityUntrackedFilesJob }
+  | { name: JobName.IntegrityUntrackedFilesRefresh; data: IIntegrityPathWithReportJob }
+  | { name: JobName.IntegrityMissingFilesQueueAll; data?: IIntegrityJob }
+  | { name: JobName.IntegrityMissingFiles; data: IIntegrityPathWithReportJob }
+  | { name: JobName.IntegrityMissingFilesRefresh; data: IIntegrityPathWithReportJob }
+  | { name: JobName.IntegrityChecksumFiles; data?: IIntegrityJob }
+  | { name: JobName.IntegrityChecksumFilesRefresh; data?: IIntegrityPathWithChecksumJob }
+  | { name: JobName.IntegrityDeleteReportType; data: IIntegrityDeleteReportTypeJob }
+  | { name: JobName.IntegrityDeleteReports; data: IIntegrityDeleteReportsJob }
 
   // Editor
   | { name: JobName.AssetEditThumbnailGeneration; data: IEntityJob };
@@ -397,10 +457,6 @@ export interface ExtensionVersion {
   name: VectorExtension;
   availableVersion: string | null;
   installedVersion: string | null;
-}
-
-export interface VectorUpdateResult {
-  restartRequired: boolean;
 }
 
 export interface ImmichFile extends Express.Multer.File {
@@ -473,8 +529,7 @@ export interface MemoryData {
 export type VersionCheckMetadata = { checkedAt: string; releaseVersion: string };
 export type SystemFlags = { mountChecks: Record<StorageFolder, boolean> };
 export type MaintenanceModeState =
-  | { isMaintenanceMode: true; secret: string; action?: SetMaintenanceModeDto }
-  | { isMaintenanceMode: false };
+  { isMaintenanceMode: true; secret: string; action?: SetMaintenanceModeDto } | { isMaintenanceMode: false };
 export type MemoriesState = {
   /** memories have already been created through this date */
   lastOnThisDayDate: string;
@@ -492,6 +547,7 @@ export interface SystemMetadata extends Record<SystemMetadataKey, Record<string,
   [SystemMetadataKey.SystemFlags]: DeepPartial<SystemFlags>;
   [SystemMetadataKey.VersionCheckState]: VersionCheckMetadata;
   [SystemMetadataKey.MemoriesState]: MemoriesState;
+  [SystemMetadataKey.IntegrityChecksumCheckpoint]: { date?: string };
 }
 
 export type UserPreferences = {
@@ -505,10 +561,12 @@ export type UserPreferences = {
   memories: {
     enabled: boolean;
     duration: number;
+    sidebarWeb: boolean;
   };
   people: {
     enabled: boolean;
     sidebarWeb: boolean;
+    minimumFaces: number;
   };
   ratings: {
     enabled: boolean;
@@ -537,6 +595,9 @@ export type UserPreferences = {
   cast: {
     gCastEnabled: boolean;
   };
+  recentlyAdded: {
+    sidebarWeb: boolean;
+  };
 };
 
 export type UserMetadataItem<T extends keyof UserMetadata = UserMetadataKey> = {
@@ -551,3 +612,23 @@ export interface UserMetadata extends Record<UserMetadataKey, Record<string, any
 }
 
 export type MaybeDehydrated<T> = T | ShallowDehydrateObject<T>;
+
+export type JSONSchemaType = 'string' | 'number' | 'integer' | 'boolean' | 'object';
+
+export type JSONSchemaProperty = {
+  type: JSONSchemaType;
+  description?: string;
+  default?: any;
+  enum?: string[];
+  array?: boolean;
+  properties?: Record<string, JSONSchemaProperty>;
+  required?: string[];
+};
+
+export type ClassConstructor<T> = T extends new (...args: infer R) => infer L
+  ? new (...args: R) => L
+  : new (...args: any[]) => unknown;
+
+export type ClassConstructorsToInstances<T extends readonly ClassConstructor<unknown>[]> = {
+  [K in keyof T]: InstanceType<T[K]> | Mocked<InstanceType<T[K]>>;
+};

@@ -2,16 +2,19 @@ import { ActivityService } from 'src/services/activity.service';
 import { AlbumService } from 'src/services/album.service';
 import { ApiKeyService } from 'src/services/api-key.service';
 import { ApiService } from 'src/services/api.service';
+import { AssetFileService } from 'src/services/asset-file.service';
 import { AssetMediaService } from 'src/services/asset-media.service';
 import { AssetService } from 'src/services/asset.service';
-import { AuditService } from 'src/services/audit.service';
 import { AuthAdminService } from 'src/services/auth-admin.service';
 import { AuthService } from 'src/services/auth.service';
 import { CliService } from 'src/services/cli.service';
+import { ClusterGroupService } from 'src/services/cluster-group.service';
 import { DatabaseBackupService } from 'src/services/database-backup.service';
 import { DatabaseService } from 'src/services/database.service';
 import { DownloadService } from 'src/services/download.service';
 import { DuplicateService } from 'src/services/duplicate.service';
+import { HlsService } from 'src/services/hls.service';
+import { IntegrityService } from 'src/services/integrity.service';
 import { JobService } from 'src/services/job.service';
 import { LibraryService } from 'src/services/library.service';
 import { MaintenanceService } from 'src/services/maintenance.service';
@@ -40,11 +43,13 @@ import { SystemMetadataService } from 'src/services/system-metadata.service';
 import { TagService } from 'src/services/tag.service';
 import { TelemetryService } from 'src/services/telemetry.service';
 import { TimelineService } from 'src/services/timeline.service';
+import { TranscodingService } from 'src/services/transcoding.service';
 import { TrashService } from 'src/services/trash.service';
 import { UserAdminService } from 'src/services/user-admin.service';
 import { UserService } from 'src/services/user.service';
 import { VersionService } from 'src/services/version.service';
 import { ViewService } from 'src/services/view.service';
+import { WorkflowExecutionService } from 'src/services/workflow-execution.service';
 import { WorkflowService } from 'src/services/workflow.service';
 
 export const services = [
@@ -52,9 +57,9 @@ export const services = [
   ActivityService,
   AlbumService,
   ApiService,
+  AssetFileService,
   AssetMediaService,
   AssetService,
-  AuditService,
   AuthService,
   AuthAdminService,
   CliService,
@@ -62,6 +67,8 @@ export const services = [
   DatabaseService,
   DownloadService,
   DuplicateService,
+  IntegrityService,
+  HlsService,
   JobService,
   LibraryService,
   MaintenanceService,
@@ -72,6 +79,7 @@ export const services = [
   NotificationService,
   NotificationAdminService,
   OcrService,
+  ClusterGroupService,
   PartnerService,
   PersonService,
   PluginService,
@@ -90,10 +98,12 @@ export const services = [
   TagService,
   TelemetryService,
   TimelineService,
+  TranscodingService,
   TrashService,
   UserAdminService,
   UserService,
   VersionService,
   ViewService,
+  WorkflowExecutionService,
   WorkflowService,
 ];

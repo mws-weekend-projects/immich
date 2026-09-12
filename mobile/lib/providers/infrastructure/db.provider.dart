@@ -1,14 +1,7 @@
 import 'dart:async';
 
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:immich_mobile/infrastructure/repositories/db.repository.dart';
-import 'package:isar/isar.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-
-part 'db.provider.g.dart';
-
-@Riverpod(keepAlive: true)
-Isar isar(Ref ref) => throw UnimplementedError('isar');
+import 'package:immich_mobile/data/db/main/database.dart';
 
 Drift Function(Ref ref) driftOverride(Drift drift) => (ref) {
   ref.onDispose(() => unawaited(drift.close()));

@@ -58,7 +58,7 @@ class BaseCLIPTextualEncoder(InferenceModel):
     @cached_property
     def model_cfg(self) -> dict[str, Any]:
         log.debug(f"Loading model config for CLIP model '{self.model_name}'")
-        model_cfg: dict[str, Any] = json.load(self.model_cfg_path.open())
+        model_cfg: dict[str, Any] = json.load(self.model_cfg_path.open(encoding="utf-8"))
         log.debug(f"Loaded model config for CLIP model '{self.model_name}'")
         return model_cfg
 
@@ -70,14 +70,14 @@ class BaseCLIPTextualEncoder(InferenceModel):
     @cached_property
     def tokenizer_file(self) -> dict[str, Any]:
         log.debug(f"Loading tokenizer file for CLIP model '{self.model_name}'")
-        tokenizer_file: dict[str, Any] = json.load(self.tokenizer_file_path.open())
+        tokenizer_file: dict[str, Any] = json.load(self.tokenizer_file_path.open(encoding="utf-8"))
         log.debug(f"Loaded tokenizer file for CLIP model '{self.model_name}'")
         return tokenizer_file
 
     @cached_property
     def tokenizer_cfg(self) -> dict[str, Any]:
         log.debug(f"Loading tokenizer config for CLIP model '{self.model_name}'")
-        tokenizer_cfg: dict[str, Any] = json.load(self.tokenizer_cfg_path.open())
+        tokenizer_cfg: dict[str, Any] = json.load(self.tokenizer_cfg_path.open(encoding="utf-8"))
         log.debug(f"Loaded tokenizer config for CLIP model '{self.model_name}'")
         return tokenizer_cfg
 
@@ -89,7 +89,9 @@ class OpenClipTextualEncoder(BaseCLIPTextualEncoder):
 
         tokenizer: Tokenizer = Tokenizer.from_file(self.tokenizer_file_path.as_posix())
 
-        pad_id: int = tokenizer.token_to_id(pad_token)
+        pad_id = tokenizer.token_to_id(pad_token)
+        if pad_id is None:
+            raise ValueError(f"Pad token '{pad_token}' not found in tokenizer vocab")
         tokenizer.enable_padding(length=context_length, pad_token=pad_token, pad_id=pad_id)
         tokenizer.enable_truncation(max_length=context_length)
 

@@ -1,98 +1,78 @@
-import { mapAsset } from 'src/dtos/asset-response.dto';
-import { SyncService } from 'src/services/sync.service';
-import { AssetFactory } from 'test/factories/asset.factory';
-import { PartnerFactory } from 'test/factories/partner.factory';
-import { authStub } from 'test/fixtures/auth.stub';
-import { getForAsset, getForPartner } from 'test/mappers';
-import { factory } from 'test/small.factory';
-import { newTestService, ServiceMocks } from 'test/utils';
+import { Writable } from 'node:stream';
+import { SyncEntityType } from 'src/enum';
+import { send } from 'src/services/sync.service';
+import { serialize } from 'src/utils/sync';
 
-const untilDate = new Date(2024);
-const mapAssetOpts = { auth: authStub.user1, stripMetadata: false, withStack: true };
+type TestStream = {
+  stream: Writable;
+  chunks: string[];
+  flushNext: () => void;
+  pendingCount: () => number;
+};
 
-describe(SyncService.name, () => {
-  let sut: SyncService;
-  let mocks: ServiceMocks;
+const createTestStream = (highWaterMark: number): TestStream => {
+  const chunks: string[] = [];
+  const pendingCallbacks: Array<() => void> = [];
 
-  beforeEach(() => {
-    ({ sut, mocks } = newTestService(SyncService));
+  const stream = new Writable({
+    highWaterMark,
+    write(chunk, _encoding, callback) {
+      chunks.push(chunk.toString());
+      pendingCallbacks.push(callback);
+    },
   });
 
-  it('should exist', () => {
-    expect(sut).toBeDefined();
+  return {
+    stream,
+    chunks,
+    flushNext: () => pendingCallbacks.shift()?.(),
+    pendingCount: () => pendingCallbacks.length,
+  };
+};
+
+describe('send', () => {
+  const item = {
+    type: SyncEntityType.SyncCompleteV1 as const,
+    data: {},
+    ids: ['now-id'] as [string],
+  };
+
+  it('resolves immediately when the stream has capacity', async () => {
+    // A large highWaterMark means write() never signals backpressure for a
+    // single small item.
+    const { stream, chunks, flushNext } = createTestStream(1024 * 1024);
+
+    const sendPromise = send(stream, item);
+    flushNext();
+    await sendPromise;
+
+    expect(chunks).toEqual([serialize(item)]);
   });
 
-  describe('getAllAssetsForUserFullSync', () => {
-    it('should return a list of all assets owned by the user', async () => {
-      const [asset1, asset2] = [
-        AssetFactory.from({ libraryId: 'library-id', isExternal: true }).owner(authStub.user1.user).build(),
-        AssetFactory.from().owner(authStub.user1.user).build(),
-      ];
-      mocks.asset.getAllForUserFullSync.mockResolvedValue([getForAsset(asset1), getForAsset(asset2)]);
-      await expect(sut.getFullSync(authStub.user1, { limit: 2, updatedUntil: untilDate })).resolves.toEqual([
-        mapAsset(getForAsset(asset1), mapAssetOpts),
-        mapAsset(getForAsset(asset2), mapAssetOpts),
-      ]);
-      expect(mocks.asset.getAllForUserFullSync).toHaveBeenCalledWith({
-        ownerId: authStub.user1.user.id,
-        updatedUntil: untilDate,
-        limit: 2,
-      });
-    });
-  });
+  it('waits for the drain event before resolving when the stream signals backpressure', async () => {
+    // A tiny highWaterMark means the very first write already exceeds
+    // capacity, so write() returns false and send() must wait for 'drain'.
+    const { stream, chunks, flushNext, pendingCount } = createTestStream(1);
 
-  describe('getChangesForDeltaSync', () => {
-    it('should return a response requiring a full sync when partners are out of sync', async () => {
-      const partner = PartnerFactory.create();
-      const auth = factory.auth({ user: { id: partner.sharedWithId } });
-
-      mocks.partner.getAll.mockResolvedValue([getForPartner(partner)]);
-
-      await expect(
-        sut.getDeltaSync(authStub.user1, { updatedAfter: new Date(), userIds: [auth.user.id] }),
-      ).resolves.toEqual({ needsFullSync: true, upserted: [], deleted: [] });
-
-      expect(mocks.asset.getChangedDeltaSync).toHaveBeenCalledTimes(0);
-      expect(mocks.audit.getAfter).toHaveBeenCalledTimes(0);
+    let resolved = false;
+    const sendPromise = send(stream, item).then(() => {
+      resolved = true;
     });
 
-    it('should return a response requiring a full sync when last sync was too long ago', async () => {
-      mocks.partner.getAll.mockResolvedValue([]);
-      await expect(
-        sut.getDeltaSync(authStub.user1, { updatedAfter: new Date(2000), userIds: [authStub.user1.user.id] }),
-      ).resolves.toEqual({ needsFullSync: true, upserted: [], deleted: [] });
-      expect(mocks.asset.getChangedDeltaSync).toHaveBeenCalledTimes(0);
-      expect(mocks.audit.getAfter).toHaveBeenCalledTimes(0);
-    });
+    // Let any pending microtasks run; send() should still be waiting on the
+    // underlying write to complete and 'drain' to fire — it must not resolve
+    // just because write() was called.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+    expect(pendingCount()).toBe(1);
 
-    it('should return a response requiring a full sync when there are too many changes', async () => {
-      const asset = AssetFactory.create();
-      mocks.partner.getAll.mockResolvedValue([]);
-      mocks.asset.getChangedDeltaSync.mockResolvedValue(
-        Array.from<ReturnType<typeof getForAsset>>({ length: 10_000 }).fill(getForAsset(asset)),
-      );
-      await expect(
-        sut.getDeltaSync(authStub.user1, { updatedAfter: new Date(), userIds: [authStub.user1.user.id] }),
-      ).resolves.toEqual({ needsFullSync: true, upserted: [], deleted: [] });
-      expect(mocks.asset.getChangedDeltaSync).toHaveBeenCalledTimes(1);
-      expect(mocks.audit.getAfter).toHaveBeenCalledTimes(0);
-    });
+    // Completing the write lets the stream's internal buffer drop back below
+    // highWaterMark, which is what triggers the 'drain' event.
+    flushNext();
+    await sendPromise;
 
-    it('should return a response with changes and deletions', async () => {
-      const asset = AssetFactory.create({ ownerId: authStub.user1.user.id });
-      const deletedAsset = AssetFactory.create({ libraryId: 'library-id', isExternal: true });
-      mocks.partner.getAll.mockResolvedValue([]);
-      mocks.asset.getChangedDeltaSync.mockResolvedValue([getForAsset(asset)]);
-      mocks.audit.getAfter.mockResolvedValue([deletedAsset.id]);
-      await expect(
-        sut.getDeltaSync(authStub.user1, { updatedAfter: new Date(), userIds: [authStub.user1.user.id] }),
-      ).resolves.toEqual({
-        needsFullSync: false,
-        upserted: [mapAsset(getForAsset(asset), mapAssetOpts)],
-        deleted: [deletedAsset.id],
-      });
-      expect(mocks.asset.getChangedDeltaSync).toHaveBeenCalledTimes(1);
-      expect(mocks.audit.getAfter).toHaveBeenCalledTimes(1);
-    });
+    expect(resolved).toBe(true);
+    expect(chunks).toEqual([serialize(item)]);
   });
 });
