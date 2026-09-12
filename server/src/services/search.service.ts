@@ -107,6 +107,7 @@ export class SearchService extends BaseService {
         userIds,
         viewingUserId: auth.user.id,
         orderDirection: dto.order ?? AssetOrder.Desc,
+        ...(dto.order && { orderField: 'localDateTime' as const }),
       },
     );
 
@@ -191,6 +192,7 @@ export class SearchService extends BaseService {
         viewingUserId: auth.user.id,
         embedding,
         visibility: dto.visibility ?? (auth.session?.hasElevatedPermission ? undefined : 'not-locked'),
+        ...(dto.order && { orderDirection: dto.order }),
       },
     );
 

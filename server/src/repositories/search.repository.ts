@@ -113,6 +113,8 @@ export interface SearchAlbumOptions {
 
 export interface SearchOrderOptions {
   orderDirection?: 'asc' | 'desc';
+  /** Internal override used when an explicit search sort should match the timeline date. */
+  orderField?: 'fileCreatedAt' | 'localDateTime';
 }
 
 export interface SearchPaginationOptions {
@@ -157,6 +159,7 @@ export type SmartSearchOptions = SearchDateOptions &
   SearchEmbeddingOptions &
   SearchExifOptions &
   SearchOneToOneRelationOptions &
+  SearchOrderOptions &
   Omit<SearchStatusOptions, 'visibility'> &
   SearchUserIdOptions &
   SearchPeopleOptions &
@@ -227,9 +230,10 @@ export class SearchRepository {
   })
   async searchMetadata(pagination: SearchPaginationOptions, options: AssetSearchOptions) {
     const orderDirection = (options.orderDirection?.toLowerCase() || 'desc') as OrderByDirection;
+    const orderField = options.orderField === 'localDateTime' ? 'asset.localDateTime' : 'asset.fileCreatedAt';
     const items = await searchAssetBuilderLegacy(this.db, options)
       .select(columns.searchAsset)
-      .orderBy('asset.fileCreatedAt', orderDirection)
+      .orderBy(orderField, orderDirection)
       .orderBy('asset.id', orderDirection)
       .limit(pagination.size + 1)
       .offset((pagination.page - 1) * pagination.size)
@@ -321,11 +325,13 @@ export class SearchRepository {
 
     return this.db.transaction().execute(async (trx) => {
       await sql`set local vchordrq.probes = ${sql.lit(probes[VectorIndex.Clip])}`.execute(trx);
-      const items = await searchAssetBuilderLegacy(trx, options)
+      const query = searchAssetBuilderLegacy(trx, options)
         .select(columns.searchAsset)
-        .innerJoin('smart_search', 'asset.id', 'smart_search.assetId')
-        .orderBy(sql`smart_search.embedding <=> ${options.embedding}`)
-        .orderBy('asset.id', 'asc')
+        .innerJoin('smart_search', 'asset.id', 'smart_search.assetId');
+      const orderedQuery = options.orderDirection
+        ? query.orderBy('asset.localDateTime', options.orderDirection).orderBy('asset.id', options.orderDirection)
+        : query.orderBy(sql`smart_search.embedding <=> ${options.embedding}`).orderBy('asset.id', 'asc');
+      const items = await orderedQuery
         .limit(pagination.size + 1)
         .offset((pagination.page - 1) * pagination.size)
         .execute();

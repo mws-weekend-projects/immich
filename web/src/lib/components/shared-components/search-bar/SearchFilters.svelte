@@ -23,6 +23,7 @@
   import SearchTagsSection from './SearchTagsSection.svelte';
   import SearchTextSection from './SearchTextSection.svelte';
   import SearchDisplaySection from './SearchDisplaySection.svelte';
+  import SearchSortSection from './SearchSortSection.svelte';
   import SearchRatingsSection from './SearchRatingsSection.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import {
@@ -212,6 +213,9 @@
             </SearchButton>
           {/each}
         </div>
+      </div>
+      <div class="px-5 pt-5">
+        <SearchSortSection />
       </div>
       {#if activeFilter}
         <div class="px-5 pt-5">
