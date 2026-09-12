@@ -1,7 +1,7 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { mapAsset } from 'src/dtos/asset-response.dto';
 import { SearchSuggestionType } from 'src/dtos/search.dto';
-import { AssetVisibility } from 'src/enum';
+import { AssetOrder, AssetVisibility } from 'src/enum';
 import { SearchService } from 'src/services/search.service';
 import { AssetFactory } from 'test/factories/asset.factory';
 import { AuthFactory } from 'test/factories/auth.factory';
@@ -338,6 +338,15 @@ describe(SearchService.name, () => {
           viewingUserId: authStub.user1.user.id,
           visibility: 'not-locked',
         },
+      );
+    });
+
+    it('should pass the requested sort order to the repository', async () => {
+      await sut.searchSmart(authStub.user1, { size: 100, query: 'test', order: AssetOrder.Desc });
+
+      expect(mocks.search.searchSmart).toHaveBeenCalledWith(
+        { page: 1, size: 100 },
+        expect.objectContaining({ orderDirection: AssetOrder.Desc }),
       );
     });
 
