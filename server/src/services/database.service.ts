@@ -53,11 +53,7 @@ const messages = {
 
 @Injectable()
 export class DatabaseService extends BaseService {
-  @OnEvent({
-    name: 'AppBootstrap',
-    priority: BootstrapEventPriority.DatabaseService,
-    workers: [ImmichWorker.Microservices],
-  })
+  @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.DatabaseService })
   async onBootstrap() {
     const version = await this.databaseRepository.getPostgresVersion();
     const current = semver.coerce(version);
@@ -119,7 +115,9 @@ export class DatabaseService extends BaseService {
       const { database } = this.configRepository.getEnv();
       if (!database.skipMigrations) {
         const migrationCount = await this.databaseRepository.runMigrations();
-        preparation.push(this.checkSchemaDrift());
+        if (this.configRepository.getWorker() === ImmichWorker.Microservices) {
+          preparation.push(this.checkSchemaDrift());
+        }
         if (migrationCount > 0) {
           preparation.push(this.databaseRepository.vacuum({ analyze: true }));
         }
