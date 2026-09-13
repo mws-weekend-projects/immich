@@ -14,9 +14,10 @@
 
   type Props = {
     grayTheme: boolean;
+    lockMobilePageScroll?: boolean;
   };
 
-  let { grayTheme }: Props = $props();
+  let { grayTheme, lockMobilePageScroll = false }: Props = $props();
 
   let showClearIcon = $derived(searchManager.filter.query.length > 0);
   let placeholder = $derived(
@@ -32,6 +33,25 @@
 
   onDestroy(() => {
     searchStore.isSearchEnabled = false;
+  });
+
+  $effect(() => {
+    if (!lockMobilePageScroll || !showSuggestions || !mediaQueryManager.maxMd) {
+      return;
+    }
+
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+    };
   });
 
   const handleSearch = async () => {
