@@ -53,11 +53,7 @@ const messages = {
 
 @Injectable()
 export class DatabaseService extends BaseService {
-  @OnEvent({
-    name: 'AppBootstrap',
-    priority: BootstrapEventPriority.DatabaseService,
-    workers: [ImmichWorker.Microservices],
-  })
+  @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.DatabaseService })
   async onBootstrap() {
     const version = await this.databaseRepository.getPostgresVersion();
     const current = semver.coerce(version);
@@ -119,14 +115,16 @@ export class DatabaseService extends BaseService {
       if (!database.skipMigrations) {
         await this.databaseRepository.runMigrations();
 
-        this.logger.log('Checking for schema drift');
-        const drift = await this.databaseRepository.getSchemaDrift();
-        if (drift.items.length === 0) {
-          this.logger.log('No schema drift detected');
-        } else {
-          this.logger.warn(`${ErrorMessages.SchemaDrift} or run \`immich-admin schema-check\``);
-          for (const warning of drift.asHuman()) {
-            this.logger.warn(`  - ${warning}`);
+        if (this.configRepository.getWorker() === ImmichWorker.Microservices) {
+          this.logger.log('Checking for schema drift');
+          const drift = await this.databaseRepository.getSchemaDrift();
+          if (drift.items.length === 0) {
+            this.logger.log('No schema drift detected');
+          } else {
+            this.logger.warn(`${ErrorMessages.SchemaDrift} or run \`immich-admin schema-check\``);
+            for (const warning of drift.asHuman()) {
+              this.logger.warn(`  - ${warning}`);
+            }
           }
         }
       }
