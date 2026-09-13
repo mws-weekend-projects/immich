@@ -1,7 +1,7 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { mapAsset } from 'src/dtos/asset-response.dto';
 import { SearchSuggestionType } from 'src/dtos/search.dto';
-import { AssetVisibility } from 'src/enum';
+import { AssetOrder, AssetVisibility } from 'src/enum';
 import { SearchService } from 'src/services/search.service';
 import { AssetFactory } from 'test/factories/asset.factory';
 import { AuthFactory } from 'test/factories/auth.factory';
@@ -231,6 +231,18 @@ describe(SearchService.name, () => {
       expect(mocks.search.searchMetadata).toHaveBeenCalled();
     });
 
+    it('uses the timeline date when an explicit metadata sort is requested', async () => {
+      const auth = AuthFactory.create();
+      mocks.search.searchMetadata.mockResolvedValue({ hasNextPage: false, items: [] });
+
+      await sut.searchMetadata(auth, { size: 250, city: 'Oslo', order: AssetOrder.Asc });
+
+      expect(mocks.search.searchMetadata).toHaveBeenCalledWith(
+        { page: 1, size: 250 },
+        expect.objectContaining({ orderDirection: AssetOrder.Asc, orderField: 'localDateTime' }),
+      );
+    });
+
     it('should route statistics, random, and smart filter requests to their V3 search', async () => {
       const auth = AuthFactory.create();
 
@@ -338,6 +350,15 @@ describe(SearchService.name, () => {
           viewingUserId: authStub.user1.user.id,
           visibility: 'not-locked',
         },
+      );
+    });
+
+    it('should pass the requested sort order to the repository', async () => {
+      await sut.searchSmart(authStub.user1, { size: 100, query: 'test', order: AssetOrder.Desc });
+
+      expect(mocks.search.searchSmart).toHaveBeenCalledWith(
+        { page: 1, size: 100 },
+        expect.objectContaining({ orderDirection: AssetOrder.Desc }),
       );
     });
 
