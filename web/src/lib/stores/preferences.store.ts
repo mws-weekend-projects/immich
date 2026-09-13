@@ -136,3 +136,79 @@ export const autoPlayVideo = persisted<boolean>('auto-play-video', true, {});
 export const alwaysLoadOriginalVideo = persisted<boolean>('always-load-original-video', false, {});
 
 export const recentAlbumsDropdown = persisted<boolean>('recent-albums-open', true, {});
+
+export type AssetMetadataField =
+  'dateTime' | 'fileName' | 'path' | 'camera' | 'dimensions' | 'fileSize' | 'lens' | 'exposure';
+
+export type AssetMetadataOverlayMode = 'off' | 'compact' | 'detailed';
+
+export type AssetMetadataModeSettings = {
+  enabled: AssetMetadataField[];
+  order: AssetMetadataField[];
+};
+
+export type AssetMetadataOverlaySettings = {
+  mode: AssetMetadataOverlayMode;
+  delayMs: number;
+  compact: AssetMetadataModeSettings;
+  detailed: AssetMetadataModeSettings;
+};
+
+const assetMetadataFields: AssetMetadataField[] = [
+  'dateTime',
+  'fileName',
+  'path',
+  'camera',
+  'dimensions',
+  'fileSize',
+  'lens',
+  'exposure',
+];
+
+const defaultAssetMetadataOverlaySettings: AssetMetadataOverlaySettings = {
+  mode: 'off',
+  delayMs: 350,
+  compact: {
+    enabled: ['dateTime', 'camera', 'path'],
+    order: assetMetadataFields,
+  },
+  detailed: {
+    enabled: assetMetadataFields,
+    order: assetMetadataFields,
+  },
+};
+
+const normalizeAssetMetadataModeSettings = (
+  value: Partial<AssetMetadataModeSettings> | undefined,
+  defaults: AssetMetadataModeSettings,
+): AssetMetadataModeSettings => {
+  const order = [...(value?.order ?? []), ...defaults.order].filter(
+    (field, index, fields): field is AssetMetadataField =>
+      assetMetadataFields.includes(field) && fields.indexOf(field) === index,
+  );
+  const enabled = [...(value?.enabled ?? defaults.enabled)].filter(
+    (field, index, fields): field is AssetMetadataField =>
+      assetMetadataFields.includes(field) && fields.indexOf(field) === index,
+  );
+
+  return { order, enabled };
+};
+
+export const assetMetadataOverlaySettings = persisted<AssetMetadataOverlaySettings>(
+  'asset-metadata-overlay-settings',
+  defaultAssetMetadataOverlaySettings,
+  {
+    serializer: {
+      parse: (text) => {
+        const value = JSON.parse(text ?? 'null') as Partial<AssetMetadataOverlaySettings> | null;
+        return {
+          ...defaultAssetMetadataOverlaySettings,
+          ...value,
+          compact: normalizeAssetMetadataModeSettings(value?.compact, defaultAssetMetadataOverlaySettings.compact),
+          detailed: normalizeAssetMetadataModeSettings(value?.detailed, defaultAssetMetadataOverlaySettings.detailed),
+        };
+      },
+      stringify: JSON.stringify,
+    },
+  },
+);

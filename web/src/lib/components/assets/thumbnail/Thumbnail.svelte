@@ -1,14 +1,15 @@
 <script lang="ts">
   import { ProjectionType } from '$lib/constants';
+  import { assetCacheManager } from '$lib/managers/AssetCacheManager.svelte';
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
-  import { locale, playVideoThumbnailOnHover } from '$lib/stores/preferences.store';
+  import { assetMetadataOverlaySettings, locale, playVideoThumbnailOnHover } from '$lib/stores/preferences.store';
   import { getAssetMediaUrl, getAssetPlaybackUrl } from '$lib/utils';
   import { moveFocus } from '$lib/utils/focus-util';
   import { currentUrlReplaceAssetId } from '$lib/utils/navigation';
   import { getAltText } from '$lib/utils/thumbnail-util';
-  import { AssetMediaSize, AssetVisibility, type UserResponseDto } from '@immich/sdk';
+  import { AssetMediaSize, AssetVisibility, type AssetResponseDto, type UserResponseDto } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import {
     mdiArchiveArrowDownOutline,
@@ -25,6 +26,7 @@
   import type { ClassValue } from 'svelte/elements';
   import { fade } from 'svelte/transition';
   import Thumbhash from '$lib/components/Thumbhash.svelte';
+  import AssetMetadataOverlay from './AssetMetadataOverlay.svelte';
   import ImageThumbnail from './ImageThumbnail.svelte';
   import VideoThumbnail from './VideoThumbnail.svelte';
   interface Props {
@@ -79,6 +81,10 @@
   let loaded = $state(false);
   let thumbError = $state(false);
   let skipFade = $state(false);
+  let metadataAssetInfo = $state<AssetResponseDto>();
+  let metadataOverlayVisible = $state(false);
+  let metadataHoverTimer: ReturnType<typeof setTimeout> | null = null;
+  let metadataAssetId = $state(asset.id);
 
   let width = $derived(thumbnailSize || thumbnailWidth || 235);
   let height = $derived(thumbnailSize || thumbnailHeight || 235);
@@ -117,15 +123,52 @@
       return;
     }
     mouseOver = true;
+    clearMetadataHoverTimer();
+    metadataOverlayVisible = false;
+
+    const { mode, delayMs } = $assetMetadataOverlaySettings;
+    if (mode !== 'off') {
+      metadataHoverTimer = setTimeout(() => {
+        metadataHoverTimer = null;
+        if (!mouseOver || metadataAssetId !== asset.id) {
+          return;
+        }
+
+        metadataOverlayVisible = true;
+        const settings =
+          mode === 'compact' ? $assetMetadataOverlaySettings.compact : $assetMetadataOverlaySettings.detailed;
+        const needsAssetInfo = settings.enabled.some((field) => field !== 'dateTime');
+        if (needsAssetInfo && !metadataAssetInfo) {
+          void assetCacheManager
+            .getAsset({ ...authManager.params, id: asset.id })
+            .then((assetInfo) => {
+              if (mouseOver && metadataAssetId === asset.id) {
+                metadataAssetInfo = assetInfo;
+              }
+            })
+            .catch(() => undefined);
+        }
+      }, delayMs);
+    }
+
     onMouseEvent?.({ isMouseOver: true, selectedGroupIndex: groupIndex });
   };
 
   const onMouseLeave = () => {
     mouseOver = false;
+    clearMetadataHoverTimer();
+    metadataOverlayVisible = false;
     onMouseEvent?.({ isMouseOver: false, selectedGroupIndex: groupIndex });
   };
 
   let timer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearMetadataHoverTimer() {
+    if (metadataHoverTimer) {
+      clearTimeout(metadataHoverTimer);
+      metadataHoverTimer = null;
+    }
+  }
 
   const preventContextMenu = (evt: Event) => evt.preventDefault();
   const disposeables: (() => void)[] = [];
@@ -188,11 +231,23 @@
     document.addEventListener('contextmenu', clearLongPressTimer, { capture: true, passive: true });
     document.addEventListener('pointermove', moveHandler, { capture: true, passive: true });
     return () => {
+      clearMetadataHoverTimer();
       document.removeEventListener('scroll', clearLongPressTimer, true);
       document.removeEventListener('wheel', clearLongPressTimer, true);
       document.removeEventListener('contextmenu', clearLongPressTimer, true);
       document.removeEventListener('pointermove', moveHandler, true);
     };
+  });
+
+  $effect(() => {
+    if (metadataAssetId === asset.id) {
+      return;
+    }
+
+    metadataAssetId = asset.id;
+    metadataAssetInfo = undefined;
+    metadataOverlayVisible = false;
+    clearMetadataHoverTimer();
   });
   const backgroundColorClass = $derived.by(() => {
     if (loaded && !selected) {
@@ -396,6 +451,19 @@
           aria-label="Thumbnail URL"
         >
         </a>
+      {/if}
+
+      {#if metadataOverlayVisible && $assetMetadataOverlaySettings.mode !== 'off'}
+        {@const metadataMode = $assetMetadataOverlaySettings.mode}
+        <AssetMetadataOverlay
+          {asset}
+          assetInfo={metadataAssetInfo}
+          mode={metadataMode}
+          settings={metadataMode === 'compact'
+            ? $assetMetadataOverlaySettings.compact
+            : $assetMetadataOverlaySettings.detailed}
+          {selected}
+        />
       {/if}
     </div>
 

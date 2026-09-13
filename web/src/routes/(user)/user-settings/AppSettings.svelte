@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ComboBoxOption } from '$lib/components/shared-components/Combobox.svelte';
   import SettingCombobox from './SettingCombobox.svelte';
+  import AssetMetadataOverlaySettings from './AssetMetadataOverlaySettings.svelte';
   import SettingsLanguageSelector from '$lib/components/shared-components/settings/SettingsLanguageSelector.svelte';
   import { fallbackLocale, locales } from '$lib/constants';
   import {
@@ -96,6 +97,8 @@
       <Field label={$t('video_hover_setting')} description={$t('video_hover_setting_description')}>
         <Switch bind:checked={$playVideoThumbnailOnHover} />
       </Field>
+
+      <AssetMetadataOverlaySettings />
 
       <Field
         label={$t('setting_video_viewer_auto_play_title')}
