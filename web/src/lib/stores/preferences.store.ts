@@ -145,6 +145,7 @@ export type AssetMetadataOverlayMode = 'off' | 'compact' | 'detailed';
 export type AssetMetadataModeSettings = {
   enabled: AssetMetadataField[];
   order: AssetMetadataField[];
+  showLabels: boolean;
 };
 
 export type AssetMetadataOverlaySettings = {
@@ -171,10 +172,12 @@ const defaultAssetMetadataOverlaySettings: AssetMetadataOverlaySettings = {
   compact: {
     enabled: ['dateTime', 'camera', 'path'],
     order: assetMetadataFields,
+    showLabels: true,
   },
   detailed: {
     enabled: assetMetadataFields,
     order: assetMetadataFields,
+    showLabels: true,
   },
 };
 
@@ -191,7 +194,7 @@ const normalizeAssetMetadataModeSettings = (
       assetMetadataFields.includes(field) && fields.indexOf(field) === index,
   );
 
-  return { order, enabled };
+  return { order, enabled, showLabels: value?.showLabels ?? defaults.showLabels };
 };
 
 export const assetMetadataOverlaySettings = persisted<AssetMetadataOverlaySettings>(

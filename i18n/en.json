@@ -602,6 +602,8 @@
   "asset_metadata_overlay_mode": "Overlay mode",
   "asset_metadata_overlay_mode_description": "The metadata overlay is disabled by default.",
   "asset_metadata_overlay_mode_off": "Off",
+  "asset_metadata_overlay_show_labels": "Show field labels",
+  "asset_metadata_overlay_show_labels_description": "Show prefixes such as Path: or Camera model: before the value.",
   "asset_not_found_on_device_android": "Asset not found on device",
   "asset_not_found_on_device_ios": "Asset not found on device. If you are using iCloud, the asset may be inaccessible due to bad file stored on iCloud",
   "asset_not_found_on_icloud": "Asset not found on iCloud. the asset may be inaccessible due to bad file stored on iCloud",

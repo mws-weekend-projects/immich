@@ -602,6 +602,8 @@
   "asset_metadata_overlay_mode": "Overlay-Modus",
   "asset_metadata_overlay_mode_description": "Das Metadaten-Overlay ist standardmäßig deaktiviert.",
   "asset_metadata_overlay_mode_off": "Aus",
+  "asset_metadata_overlay_show_labels": "Feldbezeichnungen anzeigen",
+  "asset_metadata_overlay_show_labels_description": "Präfixe wie Pfad: oder Kamera-Modell: vor dem Wert anzeigen.",
   "asset_not_found_on_device_android": "Datei auf Gerät nicht gefunden",
   "asset_not_found_on_device_ios": "Datei auf Gerät nicht gefunden. Wenn Du iCloud verwendest, kann die Datei möglicherweise aufgrund schlechter Dateispeicherung von iCloud nicht auffindbar sein",
   "asset_not_found_on_icloud": "Datei in iCloud nicht gefunden. Die Datei kann möglicherweise aufgrund schlechter Dateispeicherung in iCloud nicht auffindbar sein",
