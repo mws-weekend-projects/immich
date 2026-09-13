@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import semver from 'semver';
 import { ErrorMessages, EXTENSION_NAMES, VECTOR_EXTENSIONS } from 'src/constants.js';
 import { OnEvent } from 'src/decorators.js';
-import { BootstrapEventPriority, DatabaseExtension, DatabaseLock, VectorIndex } from 'src/enum.js';
+import { BootstrapEventPriority, DatabaseExtension, DatabaseLock, ImmichWorker, VectorIndex } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import type { VectorExtension } from 'src/types.js';
 
@@ -53,7 +53,11 @@ const messages = {
 
 @Injectable()
 export class DatabaseService extends BaseService {
-  @OnEvent({ name: 'AppBootstrap', priority: BootstrapEventPriority.DatabaseService })
+  @OnEvent({
+    name: 'AppBootstrap',
+    priority: BootstrapEventPriority.DatabaseService,
+    workers: [ImmichWorker.Microservices],
+  })
   async onBootstrap() {
     const version = await this.databaseRepository.getPostgresVersion();
     const current = semver.coerce(version);
