@@ -17,22 +17,30 @@
 
   const getFieldLabel = (field: AssetMetadataField) => {
     switch (field) {
-      case 'dateTime':
+      case 'dateTime': {
         return $t('date_and_time');
-      case 'fileName':
+      }
+      case 'fileName': {
         return $t('filename');
-      case 'path':
+      }
+      case 'path': {
         return $t('path');
-      case 'camera':
+      }
+      case 'camera': {
         return $t('camera_model');
-      case 'dimensions':
+      }
+      case 'dimensions': {
         return $t('asset_metadata_dimensions');
-      case 'fileSize':
+      }
+      case 'fileSize': {
         return $t('file_size');
-      case 'lens':
+      }
+      case 'lens': {
         return $t('lens_model');
-      case 'exposure':
+      }
+      case 'exposure': {
         return $t('exposure_time');
+      }
     }
   };
 
@@ -69,11 +77,13 @@
     const index = order.indexOf(field);
     const target = index + offset;
 
-    if (index < 0 || target < 0 || target >= order.length) {
+    if (index === -1 || target < 0 || target >= order.length) {
       return;
     }
 
-    [order[index], order[target]] = [order[target], order[index]];
+    const movedField = order[index];
+    order[index] = order[target];
+    order[target] = movedField;
     updateModeSettings(mode, { order });
   };
 
@@ -95,7 +105,7 @@
     const order = [...$assetMetadataOverlaySettings[mode].order];
     const sourceIndex = order.indexOf(sourceField);
     const targetIndex = order.indexOf(targetField);
-    if (sourceIndex < 0 || targetIndex < 0) {
+    if (sourceIndex === -1 || targetIndex === -1) {
       return;
     }
 
@@ -137,7 +147,7 @@
     </select>
   </Field>
 
-  {#each modes as mode}
+  {#each modes as mode (mode)}
     {@const modeSettings = $assetMetadataOverlaySettings[mode]}
     <div class="rounded-lg border border-light-200 p-4 dark:border-dark-600" data-testid={`metadata-settings-${mode}`}>
       <div class="mb-3">
@@ -147,10 +157,20 @@
         <p class="text-sm text-light-500 dark:text-dark-300">{$t('asset_metadata_overlay_fields_description')}</p>
       </div>
 
+      <Field
+        label={$t('asset_metadata_overlay_show_labels')}
+        description={$t('asset_metadata_overlay_show_labels_description')}
+      >
+        <Switch
+          checked={modeSettings.showLabels}
+          onCheckedChange={(showLabels) => updateModeSettings(mode, { showLabels })}
+        />
+      </Field>
+
       <div class="flex flex-col gap-1" role="list">
         {#each modeSettings.order as field, index (field)}
           <div
-            class="flex items-center gap-2 rounded-md border border-transparent px-1 py-1 hover:border-light-200 dark:hover:border-dark-600"
+            class="flex items-center gap-2 rounded-md border border-transparent p-1 hover:border-light-200 dark:hover:border-dark-600"
             class:opacity-50={!modeSettings.enabled.includes(field)}
             role="listitem"
             ondragover={(event) => event.preventDefault()}
@@ -170,7 +190,7 @@
             <span class="min-w-0 flex-1 truncate text-sm">{getFieldLabel(field)}</span>
             <button
               type="button"
-              class="rounded p-1 text-light-500 hover:bg-light-200 disabled:opacity-30 dark:hover:bg-dark-600"
+              class="rounded-sm p-1 text-light-500 hover:bg-light-200 disabled:opacity-30 dark:hover:bg-dark-600"
               aria-label={$t('asset_metadata_move_up')}
               disabled={index === 0}
               onclick={() => moveField(mode, field, -1)}
@@ -179,7 +199,7 @@
             </button>
             <button
               type="button"
-              class="rounded p-1 text-light-500 hover:bg-light-200 disabled:opacity-30 dark:hover:bg-dark-600"
+              class="rounded-sm p-1 text-light-500 hover:bg-light-200 disabled:opacity-30 dark:hover:bg-dark-600"
               aria-label={$t('asset_metadata_move_down')}
               disabled={index === modeSettings.order.length - 1}
               onclick={() => moveField(mode, field, 1)}
