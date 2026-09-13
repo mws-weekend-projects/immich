@@ -396,7 +396,7 @@
       <div class="fixed inset-s-0 top-0 z-2 w-full">
         <ControlAppBar onClose={() => goto(previousRoute)} backIcon={mdiArrowLeft}>
           <div class="mx-auto w-full max-w-2xl pe-2">
-            <SearchBar grayTheme={false} />
+            <SearchBar grayTheme={false} lockMobilePageScroll />
           </div>
         </ControlAppBar>
       </div>
