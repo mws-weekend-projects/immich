@@ -48,6 +48,9 @@ describe('SearchBar mobile dialog layout', () => {
     const panel = await screen.findByTestId('search-filter-panel');
     const scrollArea = screen.getByTestId('search-filter-scroll-area');
     const footer = screen.getByTestId('search-filter-footer');
+    const clearButton = screen.getByTestId('search-filter-clear');
+    const submitButton = screen.getByTestId('search-filter-submit');
+    const footerControls = footer.querySelector(':scope > div:last-child');
 
     expect(panel.classList).toContain('max-md:flex');
     expect(panel.classList).toContain('max-md:overflow-hidden');
@@ -55,6 +58,12 @@ describe('SearchBar mobile dialog layout', () => {
     expect(scrollArea.classList).toContain('max-md:overscroll-contain');
     expect(scrollArea).not.toContainElement(footer);
     expect(footer.classList).toContain('max-md:shrink-0');
+    expect(footerControls?.classList).toContain('max-md:grid');
+    expect(footerControls?.classList).toContain('max-md:grid-cols-2');
+    expect(clearButton.classList).toContain('max-md:min-h-11');
+    expect(clearButton.classList).toContain('max-md:min-w-0');
+    expect(submitButton.classList).toContain('max-md:min-h-11');
+    expect(submitButton.classList).toContain('max-md:min-w-0');
   });
 
   it('locks the mobile page scroll while open and restores it when unmounted', async () => {
