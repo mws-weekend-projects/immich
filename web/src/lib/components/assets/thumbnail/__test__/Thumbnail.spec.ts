@@ -4,7 +4,7 @@ import { getIntersectionObserverMock } from '$lib/__mocks__/intersection-observe
 import Thumbnail from '$lib/components/assets/thumbnail/Thumbnail.svelte';
 import { assetMetadataOverlaySettings } from '$lib/stores/preferences.store';
 import { getTabbable } from '$lib/utils/focus-util';
-import { assetFactory, timelineAssetFactory } from '@test-data/factories/asset-factory';
+import { timelineAssetFactory } from '@test-data/factories/asset-factory';
 
 vi.mock('$lib/utils/navigation', () => ({
   currentUrlReplaceAssetId: vi.fn(),
@@ -81,8 +81,8 @@ describe('Thumbnail component', () => {
     assetMetadataOverlaySettings.set({
       mode: 'compact',
       delayMs: 350,
-      compact: { enabled: ['dateTime'], order: ['dateTime'] },
-      detailed: { enabled: [], order: ['dateTime'] },
+      compact: { enabled: ['dateTime'], order: ['dateTime'], showLabels: true },
+      detailed: { enabled: [], order: ['dateTime'], showLabels: true },
     });
 
     const { baseElement } = render(Thumbnail, { asset });

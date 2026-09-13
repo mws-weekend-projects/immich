@@ -4,13 +4,14 @@ import type { AssetMetadataModeSettings } from '$lib/stores/preferences.store';
 import { renderWithTooltips } from '$tests/helpers';
 import { assetFactory, timelineAssetFactory } from '@test-data/factories/asset-factory';
 
-const settings = (enabled: AssetMetadataModeSettings['enabled'], order: AssetMetadataModeSettings['order']) => ({
-  enabled,
-  order,
-});
+const settings = (
+  enabled: AssetMetadataModeSettings['enabled'],
+  order: AssetMetadataModeSettings['order'],
+  showLabels = true,
+) => ({ enabled, order, showLabels });
 
 const getFields = (container: HTMLElement) =>
-  [...container.querySelectorAll<HTMLElement>('[data-testid="asset-metadata-overlay"] [data-field]')].map(
+  [...container.querySelectorAll<HTMLElement>(':scope [data-testid="asset-metadata-overlay"] [data-field]')].map(
     (element) => element.dataset.field,
   );
 
@@ -64,6 +65,18 @@ describe('AssetMetadataOverlay', () => {
     });
 
     expect(getFields(view.container)).toEqual(['dateTime']);
+  });
+
+  it('can hide field labels independently from the values', () => {
+    const view = renderWithTooltips(AssetMetadataOverlay, {
+      asset,
+      assetInfo,
+      mode: 'compact',
+      settings: settings(['path'], ['path'], false),
+    });
+
+    expect(view.container.querySelector('[data-field="path"]')?.textContent).toContain(assetInfo.originalPath);
+    expect(view.container.querySelector('[data-field="path"]')?.textContent).not.toContain('path:');
   });
 
   it('exposes the complete path on the truncated path value', () => {

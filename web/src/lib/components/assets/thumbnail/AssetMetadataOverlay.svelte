@@ -25,22 +25,30 @@
 
   const getFieldLabel = (field: AssetMetadataField) => {
     switch (field) {
-      case 'dateTime':
+      case 'dateTime': {
         return $t('date_and_time');
-      case 'fileName':
+      }
+      case 'fileName': {
         return $t('filename');
-      case 'path':
+      }
+      case 'path': {
         return $t('path');
-      case 'camera':
+      }
+      case 'camera': {
         return $t('camera_model');
-      case 'dimensions':
+      }
+      case 'dimensions': {
         return `${$t('width')} × ${$t('height')}`;
-      case 'fileSize':
+      }
+      case 'fileSize': {
         return $t('file_size');
-      case 'lens':
+      }
+      case 'lens': {
         return $t('lens_model');
-      case 'exposure':
+      }
+      case 'exposure': {
         return $t('exposure_time');
+      }
     }
   };
 
@@ -71,12 +79,15 @@
     const exifInfo = assetInfo?.exifInfo;
 
     switch (field) {
-      case 'dateTime':
+      case 'dateTime': {
         return getDateTimeValue();
-      case 'fileName':
+      }
+      case 'fileName': {
         return assetInfo?.originalFileName;
-      case 'path':
+      }
+      case 'path': {
         return assetInfo?.originalPath;
+      }
       case 'camera': {
         const camera = [exifInfo?.make, exifInfo?.model].filter(Boolean).join(' ');
         return camera || undefined;
@@ -93,8 +104,9 @@
         const size = exifInfo?.fileSizeInByte;
         return size ? getByteUnitString(size, $locale) : undefined;
       }
-      case 'lens':
+      case 'lens': {
         return exifInfo?.lensModel || undefined;
+      }
       case 'exposure': {
         const exposure = [
           exifInfo?.fNumber ? `ƒ/${exifInfo.fNumber}` : undefined,
@@ -113,8 +125,8 @@
   <div
     class={[
       'pointer-events-none absolute inset-x-0 bottom-0 z-2 overflow-hidden px-2 pt-8 pb-2 text-[10px] leading-tight text-white text-shadow-sm',
-      'bg-gradient-to-t from-black/85 via-black/55 to-transparent',
-      mode === 'compact' ? 'line-clamp-3' : 'line-clamp-5',
+      'bg-linear-to-t from-black/85 via-black/55 to-transparent',
+      mode === 'compact' ? 'max-h-[60%]' : 'max-h-[75%]',
       { 'rounded-b-xl': selected },
     ]}
     data-testid="asset-metadata-overlay"
@@ -124,11 +136,17 @@
       {#if value}
         {@const label = getFieldLabel(field)}
         <div class="flex min-w-0 gap-1" data-field={field}>
-          <span class="shrink-0 text-white/70">{label}:</span>
+          {#if settings.showLabels}
+            <span class="shrink-0 text-white/70">{label}:</span>
+          {/if}
           {#if field === 'path'}
             <Tooltip text={value}>
               {#snippet child({ props })}
-                <span {...props} class="pointer-events-auto block min-w-0 truncate" title={value}>{value}</span>
+                <span
+                  {...props}
+                  class="pointer-events-auto line-clamp-4 block min-w-0 break-all whitespace-normal"
+                  title={value}>{value}</span
+                >
               {/snippet}
             </Tooltip>
           {:else}
