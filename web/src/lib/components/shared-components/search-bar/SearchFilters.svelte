@@ -191,7 +191,7 @@
     <div
       transition:fly={{ y: 25, duration: 250 }}
       data-testid="search-filter-panel"
-      class="absolute z-1 w-full rounded-b-3xl bg-white shadow-[0_8px_20px_rgba(0,0,0,0.12)] transition-all max-md:flex max-md:max-h-[calc(100dvh-var(--navbar-height-md)-1rem)] max-md:flex-col max-md:overflow-hidden dark:bg-immich-dark-gray dark:text-gray-300"
+      class="absolute z-1 w-full rounded-b-3xl bg-white shadow-[0_8px_20px_rgba(0,0,0,0.12)] transition-all max-md:flex max-md:max-h-[calc(100dvh-var(--navbar-height-md)-1rem)] max-md:flex-col max-md:overflow-hidden max-md:text-sm dark:bg-immich-dark-gray dark:text-gray-300"
     >
       <div
         data-testid="search-filter-scroll-area"
@@ -204,8 +204,8 @@
           {onClearAllSearchTerms}
           {onActiveSelectionChange}
         />
-        <div class="px-5">
-          <Text class="py-5" fontWeight="medium" aria-hidden={true}>{$t('filter_by')}</Text>
+        <div class="px-5 max-md:px-3">
+          <Text class="py-3 md:py-5" fontWeight="medium" aria-hidden={true}>{$t('filter_by')}</Text>
           <div class="flex flex-wrap gap-2">
             {#each filters as item (item.name)}
               <SearchButton
@@ -219,11 +219,11 @@
             {/each}
           </div>
         </div>
-        <div class="px-5 pt-5">
+        <div class="px-5 pt-5 max-md:px-3 max-md:pt-3">
           <SearchSortSection />
         </div>
         {#if activeFilter}
-          <div class="px-5 pt-5">
+          <div class="px-5 pt-5 max-md:px-3 max-md:pt-3">
             {#if activeFilter === 'type'}
               <SearchTextSection />
             {:else if activeFilter === 'people'}
@@ -246,8 +246,8 @@
           inert={!showAdvanced}
         >
           <div class="overflow-hidden">
-            <div class="my-5 h-px w-full bg-light-200 dark:bg-dark-600"></div>
-            <div class="px-5">
+            <div class="my-3 h-px w-full bg-light-200 md:my-5 dark:bg-dark-600"></div>
+            <div class="px-5 max-md:px-3">
               <SearchCameraSection />
               {#if authManager.authenticated && authManager.preferences.ratings.enabled}
                 <SearchRatingsSection />
@@ -258,25 +258,33 @@
         </div>
       </div>
       <div data-testid="search-filter-footer" class="max-md:shrink-0">
-        <div class="my-5 h-px w-full bg-light-200 dark:bg-dark-600"></div>
-        <div class="flex gap-2 px-5 pb-5">
+        <div class="my-3 h-px w-full bg-light-200 md:my-5 dark:bg-dark-600"></div>
+        <div class="flex gap-2 px-5 pb-5 max-md:grid max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-3">
           <Button
             size="small"
             variant={advancedFiltersSet ? 'outline' : 'ghost'}
             leadingIcon={mdiTune}
             trailingIcon={showAdvanced ? mdiChevronUp : mdiChevronDown}
+            class="max-md:col-span-2 max-md:min-h-11 max-md:w-full"
             onclick={() => (showAdvanced = !showAdvanced)}>{$t('advanced_filters')}</Button
           >
-          <div class="flex-1"></div>
+          <div class="flex-1 max-md:hidden"></div>
           <Button
             size="small"
             shape="round"
             variant="outline"
             color="secondary"
-            class="bg-transparent"
+            data-testid="search-filter-clear"
+            class="bg-transparent max-md:min-h-11 max-md:w-full max-md:min-w-0"
             onclick={() => clear()}>{$t('clear_all')}</Button
           >
-          <Button size="small" shape="round" onclick={() => onSearch()}>{$t('search')}</Button>
+          <Button
+            size="small"
+            shape="round"
+            data-testid="search-filter-submit"
+            class="max-md:min-h-11 max-md:w-full max-md:min-w-0"
+            onclick={() => onSearch()}>{$t('search')}</Button
+          >
         </div>
       </div>
     </div>
