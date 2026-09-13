@@ -175,10 +175,11 @@
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   function clearMetadataHoverTimer() {
-    if (metadataHoverTimer) {
-      clearTimeout(metadataHoverTimer);
-      metadataHoverTimer = null;
+    if (!metadataHoverTimer) {
+      return;
     }
+    clearTimeout(metadataHoverTimer);
+    metadataHoverTimer = null;
   }
 
   const preventContextMenu = (evt: Event) => evt.preventDefault();
