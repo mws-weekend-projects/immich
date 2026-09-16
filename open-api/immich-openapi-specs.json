@@ -18656,6 +18656,10 @@
           },
           "thumbnail": {
             "$ref": "#/components/schemas/AdminConfigGeneratedImageDto"
+          },
+          "useEmbeddedJpegPreview": {
+            "description": "Use embedded JPEG previews",
+            "type": "boolean"
           }
         },
         "required": [
@@ -18663,7 +18667,8 @@
           "extractEmbedded",
           "fullsize",
           "preview",
-          "thumbnail"
+          "thumbnail",
+          "useEmbeddedJpegPreview"
         ],
         "type": "object"
       },

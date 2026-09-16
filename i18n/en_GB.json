@@ -92,6 +92,8 @@
     "image_fullsize_title": "Full-size Image Settings",
     "image_prefer_embedded_preview": "Prefer embedded preview",
     "image_prefer_embedded_preview_setting_description": "Use embedded previews in RAW photos as the input to image processing and when available. This can produce more accurate colours for some images, but the quality of the preview is camera-dependent and the image may have more compression artifacts.",
+    "image_use_embedded_jpeg_preview": "Use embedded JPEG previews",
+    "image_use_embedded_jpeg_preview_setting_description": "Use embedded JPEG previews when generating thumbnails. This can improve first visibility, but the preview quality and appearance depend on the source file.",
     "image_prefer_wide_gamut": "Prefer wide gamut",
     "image_prefer_wide_gamut_setting_description": "Use Display P3 for thumbnails. This better preserves the vibrance of images with wide colourspaces, but images may appear differently on old devices with an old browser version. sRGB images are kept as sRGB to avoid colour shifts.",
     "image_preview_description": "Medium-size image with stripped metadata, used when viewing a single asset and for machine learning",

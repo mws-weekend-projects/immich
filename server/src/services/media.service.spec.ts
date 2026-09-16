@@ -183,7 +183,9 @@ describe(MediaService.name, () => {
     });
 
     it('should queue all assets with missing fullsize when feature is enabled', async () => {
-      mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: true } } });
+      mocks.systemMetadata.get.mockResolvedValue({
+        image: { fullsize: { enabled: true }, useEmbeddedJpegPreview: true },
+      });
       const asset = { id: factory.uuid(), isEdited: false };
       mocks.assetJob.streamForThumbnailJob.mockReturnValue(makeStream([asset]));
       mocks.person.getAll.mockReturnValue(makeStream());
@@ -934,13 +936,13 @@ describe(MediaService.name, () => {
       });
     });
 
-    it('should try JPEG EXIF preview first for non-edited thumbnails', async () => {
+    it('should try JPEG EXIF preview first when enabled for non-edited thumbnails', async () => {
       const asset = AssetFactory.from({ originalFileName: 'file.jpg' })
         .exif({ fileSizeInByte: 5000, profileDescription: 'Adobe RGB', bitsPerSample: 8, orientation: undefined })
         .build();
       mocks.media.extract.mockResolvedValue({ buffer: extractedBuffer, format: RawExtractedFormat.Jpeg });
       mocks.media.getImageMetadata.mockResolvedValue({ width: 512, height: 384, isTransparent: false });
-      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: false } });
+      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: false, useEmbeddedJpegPreview: true } });
       mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
 
       await sut.handleGenerateThumbnails({ id: asset.id });
@@ -962,12 +964,33 @@ describe(MediaService.name, () => {
         .build();
       mocks.media.extract.mockResolvedValue({ buffer: extractedBuffer, format: RawExtractedFormat.Jpeg });
       mocks.media.getImageMetadata.mockResolvedValue({ width: 180, height: 180, isTransparent: false });
-      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: false } });
+      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: false, useEmbeddedJpegPreview: true } });
       mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
 
       await sut.handleGenerateThumbnails({ id: asset.id });
 
       expect(mocks.media.extract).toHaveBeenCalledWith(asset.originalPath);
+      expect(mocks.media.decodeImage).toHaveBeenCalledWith(
+        asset.originalPath,
+        expect.objectContaining({
+          colorspace: Colorspace.P3,
+          processInvalidImages: false,
+          size: 1440,
+        }),
+      );
+    });
+
+    it('should use the original JPEG when embedded JPEG previews are disabled', async () => {
+      const asset = AssetFactory.from({ originalFileName: 'file.jpg' })
+        .exif({ fileSizeInByte: 5000, profileDescription: 'Adobe RGB', bitsPerSample: 8, orientation: undefined })
+        .build();
+      mocks.media.extract.mockResolvedValue({ buffer: extractedBuffer, format: RawExtractedFormat.Jpeg });
+      mocks.systemMetadata.get.mockResolvedValue({ image: { extractEmbedded: false, useEmbeddedJpegPreview: false } });
+      mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));
+
+      await sut.handleGenerateThumbnails({ id: asset.id });
+
+      expect(mocks.media.extract).not.toHaveBeenCalled();
       expect(mocks.media.decodeImage).toHaveBeenCalledWith(
         asset.originalPath,
         expect.objectContaining({
@@ -1271,7 +1294,9 @@ describe(MediaService.name, () => {
 
     it('should skip generating full-size preview for web-friendly images', async () => {
       const asset = AssetFactory.from().exif().build();
-      mocks.systemMetadata.get.mockResolvedValue({ image: { fullsize: { enabled: true } } });
+      mocks.systemMetadata.get.mockResolvedValue({
+        image: { fullsize: { enabled: true }, useEmbeddedJpegPreview: true },
+      });
       mocks.media.extract.mockResolvedValue({ buffer: extractedBuffer, format: RawExtractedFormat.Jpeg });
       mocks.media.getImageMetadata.mockResolvedValue({ width: 3840, height: 2160, isTransparent: false });
       mocks.assetJob.getForGenerateThumbnailJob.mockResolvedValue(getForGenerateThumbnail(asset));

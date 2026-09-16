@@ -346,6 +346,7 @@ const AdminConfigSchemaWithVisibility = z
           .meta({ id: 'AdminConfigGeneratedFullsizeImageDto' }),
         colorspace: ColorspaceSchema,
         extractEmbedded: configBool.describe('Extract embedded'),
+        useEmbeddedJpegPreview: configBool.describe('Use embedded JPEG previews'),
       })
       .meta({ id: 'AdminConfigImageDto' }),
     newVersionCheck: z
@@ -707,6 +708,7 @@ export const defaults = Object.freeze<SystemConfig>({
     },
     colorspace: Colorspace.P3,
     extractEmbedded: false,
+    useEmbeddedJpegPreview: false,
     fullsize: {
       enabled: false,
       format: ImageFormat.Jpeg,

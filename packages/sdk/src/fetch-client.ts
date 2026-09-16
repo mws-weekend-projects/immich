@@ -137,6 +137,8 @@ export type AdminConfigImageDto = {
     fullsize: AdminConfigGeneratedFullsizeImageDto;
     preview: AdminConfigGeneratedImageDto;
     thumbnail: AdminConfigGeneratedImageDto;
+    /** Use embedded JPEG previews */
+    useEmbeddedJpegPreview: boolean;
 };
 export type AdminConfigIntegrityChecksumJobDto = {
     /** Cron expression for when the integrity check should run */

@@ -214,6 +214,17 @@
             {disabled}
           />
         </div>
+
+        <div class="mt-4">
+          <SettingSwitch
+            title={$t('admin.image_use_embedded_jpeg_preview')}
+            subtitle={$t('admin.image_use_embedded_jpeg_preview_setting_description')}
+            checked={configToEdit.image.useEmbeddedJpegPreview}
+            onToggle={() => (configToEdit.image.useEmbeddedJpegPreview = !configToEdit.image.useEmbeddedJpegPreview)}
+            isEdited={configToEdit.image.useEmbeddedJpegPreview !== config.image.useEmbeddedJpegPreview}
+            {disabled}
+          />
+        </div>
       </div>
 
       <div class="ms-4 mt-4">
