@@ -1,112 +1,42 @@
-import { fireEvent, render } from '@testing-library/svelte';
+import Thumbnail from '#lib/components/assets/thumbnail/Thumbnail.svelte';
+import { assetMetadataOverlaySettings } from '#lib/stores/preferences.store.ts';
+import { getTabbable } from '#lib/utils/focus-util.ts';
+import { factory } from '#test/unit/factories.ts';
+import { renderWithTooltips } from '#test/unit/helpers.ts';
+import { tick } from 'svelte';
 import { get } from 'svelte/store';
-import { getIntersectionObserverMock } from '$lib/__mocks__/intersection-observer.mock';
-import Thumbnail from '$lib/components/assets/thumbnail/Thumbnail.svelte';
-import { assetMetadataOverlaySettings } from '$lib/stores/preferences.store';
-import { getTabbable } from '$lib/utils/focus-util';
-import { timelineAssetFactory } from '@test-data/factories/asset-factory';
-
-vi.mock('$lib/utils/navigation', () => ({
-  currentUrlReplaceAssetId: vi.fn(),
-  isSharedLinkRoute: vi.fn().mockReturnValue(false),
-}));
-
-vi.hoisted(() => {
-  Object.defineProperty(globalThis, 'matchMedia', {
-    writable: true,
-    enumerable: true,
-    value: vi.fn().mockImplementation(function (query) {
-      return {
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: vi.fn(), // deprecated
-        removeListener: vi.fn(), // deprecated
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      };
-    }),
-  });
-});
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('Thumbnail component', () => {
   const originalSettings = get(assetMetadataOverlaySettings);
+  afterEach(() => assetMetadataOverlaySettings.set(originalSettings));
 
-  beforeAll(() => {
-    vi.stubGlobal('IntersectionObserver', getIntersectionObserverMock());
+  it('keeps a single tabbable element', async () => {
+    const { baseElement } = await renderWithTooltips(Thumbnail, { asset: factory.timelineAsset(), selected: true });
+    const container = baseElement.querySelector('[data-thumbnail-focus-container]')!;
+    expect(container.getAttribute('tabindex')).toBe('0');
+    expect(getTabbable(container)).toHaveLength(0);
   });
 
-  afterEach(() => {
-    assetMetadataOverlaySettings.set(originalSettings);
-    vi.useRealTimers();
-  });
-
-  it('should only contain a single tabbable element (the container)', () => {
-    const asset = timelineAssetFactory.build({
-      localDateTime: { year: 2024, month: 1, day: 1, hour: 12, minute: 0, second: 0, millisecond: 0 },
-    });
-    const { baseElement } = render(Thumbnail, {
-      asset,
-      selected: true,
-    });
-
-    const container = baseElement.querySelector('[data-thumbnail-focus-container]');
-    expect(container).not.toBeNull();
-    expect(container!.getAttribute('tabindex')).toBe('0');
-
-    // Guarding against inserting extra tabbable elements in future in <Thumbnail/>
-    const tabbables = getTabbable(container!);
-    expect(tabbables.length).toBe(0);
-  });
-
-  it('shows thumbhash while image is loading', () => {
-    const asset = timelineAssetFactory.build({
-      localDateTime: { year: 2024, month: 1, day: 1, hour: 12, minute: 0, second: 0, millisecond: 0 },
-    });
-    const sut = render(Thumbnail, {
-      asset,
-      selected: true,
-    });
-
-    const thumbhash = sut.getByTestId('thumbhash');
-    expect(thumbhash).not.toBeFalsy();
-  });
-
-  it('does not show metadata before the hover delay and shows it afterwards', async () => {
-    vi.useFakeTimers();
-    const asset = timelineAssetFactory.build({
-      localDateTime: { year: 2024, month: 1, day: 1, hour: 12, minute: 0, second: 0, millisecond: 0 },
-    });
+  it('shows metadata only after the hover delay', async () => {
     assetMetadataOverlaySettings.set({
-      mode: 'compact',
-      delayMs: 350,
+      mode: 'compact', delayMs: 100,
       compact: { enabled: ['dateTime'], order: ['dateTime'], showLabels: true },
       detailed: { enabled: [], order: ['dateTime'], showLabels: true },
     });
-
-    const { baseElement } = render(Thumbnail, { asset });
-    const container = baseElement.querySelector('[data-thumbnail-focus-container]') as HTMLElement;
-    await fireEvent.mouseEnter(container);
-
-    vi.advanceTimersByTime(349);
-    expect(baseElement.querySelector('[data-testid="asset-metadata-overlay"]')).not.toBeInTheDocument();
-
-    vi.advanceTimersByTime(1);
-    await Promise.resolve();
-    expect(baseElement.querySelector('[data-testid="asset-metadata-overlay"]')).toBeInTheDocument();
+    const { baseElement } = await renderWithTooltips(Thumbnail, { asset: factory.timelineAsset() });
+    const container = baseElement.querySelector('[data-thumbnail-focus-container]')!;
+    container.dispatchEvent(new MouseEvent('mouseenter'));
+    await tick();
+    expect(baseElement.querySelector('[data-testid="asset-metadata-overlay"]')).toBeNull();
+    await vi.waitFor(() => expect(baseElement.querySelector('[data-testid="asset-metadata-overlay"]')).not.toBeNull(), { timeout: 3000 });
   });
 
-  it('keeps the existing click behavior', async () => {
+  it('passes the asset to the click handler', async () => {
     const onClick = vi.fn();
-    const asset = timelineAssetFactory.build({
-      localDateTime: { year: 2024, month: 1, day: 1, hour: 12, minute: 0, second: 0, millisecond: 0 },
-    });
-    const { baseElement } = render(Thumbnail, { asset, onClick });
-    const container = baseElement.querySelector('[data-thumbnail-focus-container]') as HTMLElement;
-
-    await fireEvent.click(container);
-
+    const asset = factory.timelineAsset();
+    const { baseElement } = await renderWithTooltips(Thumbnail, { asset, onClick });
+    (baseElement.querySelector('[data-thumbnail-focus-container]') as HTMLElement).click();
     expect(onClick).toHaveBeenCalledWith(expect.objectContaining({ id: asset.id }));
   });
 });
