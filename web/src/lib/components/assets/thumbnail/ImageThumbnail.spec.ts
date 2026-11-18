@@ -1,7 +1,8 @@
-import { fireEvent, render } from '@testing-library/svelte';
-import ImageThumbnail from '$lib/components/assets/thumbnail/ImageThumbnail.svelte';
+import { render } from 'vitest-browser-svelte';
+import { tick } from 'svelte';
+import ImageThumbnail from '#lib/components/assets/thumbnail/ImageThumbnail.svelte';
 
-vi.mock('$lib/utils/sw-messaging', () => ({
+vi.mock('#lib/utils/sw-messaging.ts', () => ({
   cancelImageUrl: vi.fn(),
 }));
 
@@ -10,8 +11,8 @@ describe('ImageThumbnail component', () => {
     vi.clearAllMocks();
   });
 
-  it('renders an img element with correct attributes', () => {
-    const { baseElement } = render(ImageThumbnail, {
+  it('renders an img element with correct attributes', async () => {
+    const { baseElement } = await render(ImageThumbnail, {
       url: '/test-thumbnail.jpg',
       altText: 'Test image',
       widthStyle: '200px',
@@ -23,20 +24,21 @@ describe('ImageThumbnail component', () => {
   });
 
   it('shows BrokenAsset on error', async () => {
-    const { baseElement } = render(ImageThumbnail, {
+    const { baseElement } = await render(ImageThumbnail, {
       url: '/test-thumbnail.jpg',
       altText: 'Test image',
       widthStyle: '200px',
     });
     const img = baseElement.querySelector('img')!;
-    await fireEvent.error(img);
+    img.dispatchEvent(new Event('error'));
+    await tick();
 
     expect(baseElement.querySelector('img')).toBeNull();
     expect(baseElement.querySelector('span')?.textContent).toEqual('error_loading_image');
   });
 
   it('falls back through alternate URLs before showing BrokenAsset', async () => {
-    const { baseElement } = render(ImageThumbnail, {
+    const { baseElement } = await render(ImageThumbnail, {
       url: '/test-thumbnail.jpg',
       fallbackUrls: ['/test-preview.jpg', '/test-original.jpg'],
       altText: 'Test image',
@@ -46,60 +48,64 @@ describe('ImageThumbnail component', () => {
     let img = baseElement.querySelector('img')!;
     expect(img.getAttribute('src')).toBe('/test-thumbnail.jpg');
 
-    await fireEvent.error(img);
+    img.dispatchEvent(new Event('error'));
+    await tick();
     img = baseElement.querySelector('img')!;
     expect(img.getAttribute('src')).toBe('/test-preview.jpg');
 
-    await fireEvent.error(img);
+    img.dispatchEvent(new Event('error'));
+    await tick();
     img = baseElement.querySelector('img')!;
     expect(img.getAttribute('src')).toBe('/test-original.jpg');
 
-    await fireEvent.error(img);
+    img.dispatchEvent(new Event('error'));
+    await tick();
     expect(baseElement.querySelector('img')).toBeNull();
     expect(baseElement.querySelector('span')?.textContent).toEqual('error_loading_image');
   });
 
   it('calls onComplete with false on successful load', async () => {
     const onComplete = vi.fn();
-    const { baseElement } = render(ImageThumbnail, {
+    const { baseElement } = await render(ImageThumbnail, {
       url: '/test-thumbnail.jpg',
       altText: 'Test image',
       widthStyle: '200px',
       onComplete,
     });
     const img = baseElement.querySelector('img')!;
-    await fireEvent.load(img);
+    img.dispatchEvent(new Event('load'));
+    await tick();
     expect(onComplete).toHaveBeenCalledWith(false);
   });
 
   it('calls onComplete with true on error', async () => {
     const onComplete = vi.fn();
-    const { baseElement } = render(ImageThumbnail, {
+    const { baseElement } = await render(ImageThumbnail, {
       url: '/test-thumbnail.jpg',
       altText: 'Test image',
       widthStyle: '200px',
       onComplete,
     });
     const img = baseElement.querySelector('img')!;
-    await fireEvent.error(img);
+    img.dispatchEvent(new Event('error'));
+    await tick();
     expect(onComplete).toHaveBeenCalledWith(true);
   });
 
-  it('applies hidden styles when hidden is true', () => {
-    const { baseElement } = render(ImageThumbnail, {
+  it('applies hidden styles when hidden is true', async () => {
+    const { baseElement } = await render(ImageThumbnail, {
       url: '/test-thumbnail.jpg',
       altText: 'Test image',
       widthStyle: '200px',
       hidden: true,
     });
     const img = baseElement.querySelector('img')!;
-    const style = img.getAttribute('style') ?? '';
-    expect(style).toContain('grayscale');
-    expect(style).toContain('opacity');
+    expect(img.classList.contains('grayscale-50')).toBe(true);
+    expect(img.classList.contains('opacity-50')).toBe(true);
   });
 
   it('sets alt text after loading', async () => {
-    const { baseElement } = render(ImageThumbnail, {
+    const { baseElement } = await render(ImageThumbnail, {
       url: '/test-thumbnail.jpg',
       altText: 'Test image',
       widthStyle: '200px',
@@ -107,7 +113,8 @@ describe('ImageThumbnail component', () => {
     const img = baseElement.querySelector('img')!;
     expect(img.getAttribute('alt')).toBe('');
 
-    await fireEvent.load(img);
+    img.dispatchEvent(new Event('load'));
+    await tick();
     expect(img.getAttribute('alt')).toBe('Test image');
   });
 });
