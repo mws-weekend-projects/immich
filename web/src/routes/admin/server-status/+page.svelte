@@ -3,6 +3,7 @@
   import { Container } from '@immich/ui';
   import type { PageData } from './$types';
   import ServerStatisticsPanel from './ServerStatisticsPanel.svelte';
+  import QueueStatistics from './QueueStatistics.svelte';
 
   type Props = {
     data: PageData;
@@ -14,5 +15,6 @@
 <AdminPageLayout breadcrumbs={[{ title: data.meta.title }]}>
   <Container size="large" center>
     <ServerStatisticsPanel />
+    <QueueStatistics />
   </Container>
 </AdminPageLayout>
