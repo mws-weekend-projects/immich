@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { coerce, eq, gt, lt, satisfies } from 'semver';
 import { EXTENSION_NAMES, ErrorMessages, VECTOR_EXTENSIONS } from 'src/constants.js';
 import { OnEvent } from 'src/decorators.js';
-import { BootstrapEventPriority, DatabaseExtension, DatabaseLock, VectorIndex } from 'src/enum.js';
+import { BootstrapEventPriority, DatabaseExtension, DatabaseLock, ImmichWorker, VectorIndex } from 'src/enum.js';
 import { BaseService } from 'src/services/base.service.js';
 import type { VectorExtension } from 'src/types.js';
 
@@ -115,7 +115,9 @@ export class DatabaseService extends BaseService {
       const { database } = this.configRepository.getEnv();
       if (!database.skipMigrations) {
         const migrationCount = await this.databaseRepository.runMigrations();
-        preparation.push(this.checkSchemaDrift());
+        if (this.configRepository.getWorker() === ImmichWorker.Microservices) {
+          preparation.push(this.checkSchemaDrift());
+        }
         if (migrationCount > 0) {
           preparation.push(this.databaseRepository.vacuum({ analyze: true }));
         }
