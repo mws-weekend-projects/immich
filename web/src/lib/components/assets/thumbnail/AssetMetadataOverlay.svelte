@@ -1,14 +1,14 @@
 <script lang="ts">
-  import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
+  import type { TimelineAsset } from '#lib/managers/timeline-manager/types.ts';
   import type {
     AssetMetadataField,
     AssetMetadataModeSettings,
     AssetMetadataOverlayMode,
-  } from '$lib/stores/preferences.store';
-  import { locale } from '$lib/stores/preferences.store';
-  import { getDimensions } from '$lib/utils/asset-utils';
-  import { getByteUnitString } from '$lib/utils/byte-units';
-  import { fromISODateTime, fromISODateTimeUTC, fromTimelinePlainDateTime } from '$lib/utils/timeline-util';
+  } from '#lib/stores/preferences.store.ts';
+  import { locale } from '#lib/stores/preferences.store.ts';
+  import { getDimensions } from '#lib/utils/asset-utils.ts';
+  import { getByteUnitString } from '#lib/utils/byte-units.ts';
+  import { fromISODateTime, fromISODateTimeUTC, fromTimelinePlainDateTime } from '#lib/utils/timeline-util.ts';
   import type { AssetResponseDto } from '@immich/sdk';
   import { Tooltip } from '@immich/ui';
   import { t } from 'svelte-i18n';

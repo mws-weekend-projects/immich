@@ -4,7 +4,7 @@
     type AssetMetadataField,
     type AssetMetadataModeSettings,
     type AssetMetadataOverlayMode,
-  } from '$lib/stores/preferences.store';
+  } from '#lib/stores/preferences.store.ts';
   import { Field, Icon, Switch } from '@immich/ui';
   import { mdiChevronDown, mdiChevronUp, mdiDragVertical } from '@mdi/js';
   import { t } from 'svelte-i18n';

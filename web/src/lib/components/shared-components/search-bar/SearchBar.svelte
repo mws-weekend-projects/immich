@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { mediaQueryManager } from '#lib/stores/media-query-manager.svelte.ts';
   import { focusOutside } from '#lib/actions/focus-outside.ts';
   import { shortcuts } from '#lib/actions/shortcut.ts';
   import { searchManager } from '#lib/managers/search-manager.svelte.ts';
