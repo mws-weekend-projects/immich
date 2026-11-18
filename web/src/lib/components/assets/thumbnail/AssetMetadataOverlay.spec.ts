@@ -1,8 +1,8 @@
 import { AssetTypeEnum } from '@immich/sdk';
-import AssetMetadataOverlay from '$lib/components/assets/thumbnail/AssetMetadataOverlay.svelte';
-import type { AssetMetadataModeSettings } from '$lib/stores/preferences.store';
-import { renderWithTooltips } from '$tests/helpers';
-import { assetFactory, timelineAssetFactory } from '@test-data/factories/asset-factory';
+import AssetMetadataOverlay from '#lib/components/assets/thumbnail/AssetMetadataOverlay.svelte';
+import type { AssetMetadataModeSettings } from '#lib/stores/preferences.store.ts';
+import { renderWithTooltips } from '#test/unit/helpers.ts';
+import { factory } from '#test/unit/factories.ts';
 
 const settings = (
   enabled: AssetMetadataModeSettings['enabled'],
@@ -15,9 +15,9 @@ const getFields = (container: HTMLElement) =>
     (element) => element.dataset.field,
   );
 
-describe('AssetMetadataOverlay', () => {
-  const asset = timelineAssetFactory.build();
-  const assetInfo = assetFactory.build({
+describe('AssetMetadataOverlay', async () => {
+  const asset = factory.timelineAsset();
+  const assetInfo = factory.asset({
     type: AssetTypeEnum.Image,
     originalFileName: 'image.jpg',
     originalPath: '/photos/a-very-long-original-path/image.jpg',
@@ -34,59 +34,59 @@ describe('AssetMetadataOverlay', () => {
     },
   });
 
-  it('renders enabled Compact fields in configured order', () => {
-    const view = renderWithTooltips(AssetMetadataOverlay, {
+  it('renders enabled Compact fields in configured order', async () => {
+    const view = await renderWithTooltips(AssetMetadataOverlay, {
       asset,
       assetInfo,
       mode: 'compact',
       settings: settings(['path', 'camera', 'dateTime'], ['dateTime', 'camera', 'path']),
     });
 
-    expect(getFields(view.container)).toEqual(['dateTime', 'camera', 'path']);
+    expect(getFields(view.baseElement)).toEqual(['dateTime', 'camera', 'path']);
   });
 
-  it('renders enabled Detailed fields in configured order', () => {
-    const view = renderWithTooltips(AssetMetadataOverlay, {
+  it('renders enabled Detailed fields in configured order', async () => {
+    const view = await renderWithTooltips(AssetMetadataOverlay, {
       asset,
       assetInfo,
       mode: 'detailed',
       settings: settings(['fileName', 'dimensions', 'fileSize'], ['fileSize', 'fileName', 'dimensions']),
     });
 
-    expect(getFields(view.container)).toEqual(['fileSize', 'fileName', 'dimensions']);
+    expect(getFields(view.baseElement)).toEqual(['fileSize', 'fileName', 'dimensions']);
   });
 
-  it('does not render disabled fields', () => {
-    const view = renderWithTooltips(AssetMetadataOverlay, {
+  it('does not render disabled fields', async () => {
+    const view = await renderWithTooltips(AssetMetadataOverlay, {
       asset,
       assetInfo,
       mode: 'detailed',
       settings: settings(['dateTime'], ['dateTime', 'path', 'fileName']),
     });
 
-    expect(getFields(view.container)).toEqual(['dateTime']);
+    expect(getFields(view.baseElement)).toEqual(['dateTime']);
   });
 
-  it('can hide field labels independently from the values', () => {
-    const view = renderWithTooltips(AssetMetadataOverlay, {
+  it('can hide field labels independently from the values', async () => {
+    const view = await renderWithTooltips(AssetMetadataOverlay, {
       asset,
       assetInfo,
       mode: 'compact',
       settings: settings(['path'], ['path'], false),
     });
 
-    expect(view.container.querySelector('[data-field="path"]')?.textContent).toContain(assetInfo.originalPath);
-    expect(view.container.querySelector('[data-field="path"]')?.textContent).not.toContain('path:');
+    expect(view.baseElement.querySelector('[data-field="path"]')?.textContent).toContain(assetInfo.originalPath);
+    expect(view.baseElement.querySelector('[data-field="path"]')?.textContent).not.toContain('path:');
   });
 
-  it('exposes the complete path on the truncated path value', () => {
-    const view = renderWithTooltips(AssetMetadataOverlay, {
+  it('exposes the complete path on the truncated path value', async () => {
+    const view = await renderWithTooltips(AssetMetadataOverlay, {
       asset,
       assetInfo,
       mode: 'compact',
       settings: settings(['path'], ['path']),
     });
 
-    expect(view.getByTitle(assetInfo.originalPath)).toBeInTheDocument();
+    expect(view.baseElement.querySelector('[title="' + assetInfo.originalPath + '"]')).not.toBeNull();
   });
 });
